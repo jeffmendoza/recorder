@@ -57,7 +57,7 @@ const pkgdef :Spk.PackageDefinition = (
       website = "https://owntracks.org",
       # This should be the app's main website url.
 
-      codeUrl = "https://github.com/owntracks/recorder",
+      codeUrl = "https://github.com/mnutt/owntracks-recorder",
       # URL of the app's source code repository, e.g. a GitHub URL.
       # Required if you specify a license requiring redistributing code, but optional otherwise.
 
