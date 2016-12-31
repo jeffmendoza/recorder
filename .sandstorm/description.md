@@ -1,6 +1,6 @@
 OwnTracks allows you to keep track of your own location. You can build your private location diary or share it with your family and friends. OwnTracks is open-source and uses open protocols for communication so you can be sure your data stays secure and private.
 
-The OwnTracks app runs in the background on your iOS device and waits for the smart phone to tell it that the device has moved, whereupon OwnTracks sends out a message with its current coordinates. The Android app for OwnTracks is not yet compatible with this Sandstorm app, but that will hopefully change soon.
+The OwnTracks app runs in the background on your iOS or Android device and waits for the smart phone to tell it that the device has moved, whereupon OwnTracks sends out a message with its current coordinates.
 
 OwnTracks also does quite a bit more. It shows your location on a map. Wow: big deal, huh? Well, it shows your location and that of your friends on a map. Ah: better. It can also detect when you enter or leave a particular region for which you set a so-called waypoint. People use this, say, to control some aspect of their home-automation system. (Everybody left home? We can turn the lights off.)
 
