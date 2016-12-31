@@ -22,6 +22,6 @@ set -euo pipefail
 cd /opt/app
 
 cp .sandstorm/config.mk .
-make
+make clean && make
 
 exit 0

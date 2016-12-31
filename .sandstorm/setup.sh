@@ -24,6 +24,6 @@ set -euo pipefail
 # appropriate for your application.
 
 export DEBIAN_FRONTEND=noninteractive
-sudo apt-get install -y libcurl4-openssl-dev libconfig-dev libsodium-dev pkg-config
+sudo apt-get install -y build-essential linux-headers-$(uname -r) libcurl4-openssl-dev libmosquitto-dev liblua5.2-dev libsodium-dev libconfig-dev
 
 exit 0
