@@ -1,6 +1,6 @@
 include config.mk
 
-CFLAGS	=-Wall -Werror
+CFLAGS	+=-Wall -Werror
 LIBS	= $(MORELIBS) -lm
 LIBS 	+= -lcurl -lconfig
 
@@ -13,6 +13,7 @@ OTR_OBJS = json.o \
 	   misc.o \
 	   util.o \
 	   storage.o \
+	   fences.o \
 	   listsort.o
 OTR_EXTRA_OBJS =
 
@@ -68,6 +69,9 @@ CFLAGS += -DCONFIGFILE=\"$(CONFIGFILE)\"
 
 TARGETS += ot-recorder ocat
 
+GIT_VERSION := $(shell git describe --long --abbrev=10 --dirty --tags 2>/dev/null || echo "tarball")
+CFLAGS += -DGIT_VERSION=\"$(GIT_VERSION)\"
+
 all: $(TARGETS)
 
 ot-recorder: recorder.o $(OTR_OBJS) $(OTR_EXTRA_OBJS)
@@ -79,10 +83,11 @@ ocat: ocat.o $(OTR_OBJS)
 
 $(OTR_OBJS): config.mk Makefile
 
-recorder.o: recorder.c storage.h util.h Makefile geo.h udata.h json.h http.h gcache.h config.mk hooks.h base64.h recorder.h version.h
+recorder.o: recorder.c storage.h util.h Makefile geo.h udata.h json.h http.h gcache.h config.mk hooks.h base64.h recorder.h version.h fences.h
 geo.o: geo.h geo.c udata.h
 geohash.o: geohash.h geohash.c udata.h
 base64.o: base64.h base64.c
+	$(CC) $(CFLAGS) -Wno-unused-result -Wno-uninitialized -c base64.c
 gcache.o: gcache.c gcache.h json.h
 misc.o: misc.c misc.h udata.h
 http.o: http.c mongoose.h util.h http.h storage.h version.h hooks.h
@@ -92,6 +97,7 @@ ocat.o: ocat.c storage.h util.h version.h config.mk Makefile
 storage.o: storage.c storage.h util.h gcache.h listsort.h
 hooks.o: hooks.c udata.h hooks.h util.h version.h gcache.h
 listsort.o: listsort.c listsort.h
+fences.o: fences.c fences.h util.h json.h udata.h gcache.h hooks.h
 
 
 clean:

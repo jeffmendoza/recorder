@@ -2,12 +2,12 @@
 
 # Uncomment the following for FreeBSD; this assumes:
 #
+#	cd /usr/ports/databases/lmdb; make config; make install clean
 #       cd /usr/ports/ftp/curl; make config; make install clean
 #       cd /usr/ports/devel/libconfig; make config; make install clean
 #
 # CC      = clang
-# MDBFLAGS = -DMDB_DSYNC=O_SYNC -Dfdatasync=fsync
-# CFLAGS += $(MDBFLAGS) -I/usr/local/include
+# CFLAGS += -I/usr/local/include
 # MORELIBS += -L /usr/local/lib
 # -- end FreeBSD
 
@@ -63,12 +63,12 @@ GHASHPREC = 7
 JSON_INDENT ?= no
 
 # Location of optional default configuration file
-CONFIGFILE = /etc/defaults/ot-recorder
+CONFIGFILE = /etc/default/ot-recorder
 
 # Optionally specify the path to the Mosquitto libs, include here
 MOSQUITTO_INC = -I/usr/include
 MOSQUITTO_LIB = -L/usr/lib
-MORELIBS = # -lssl
+MORELIBS += # -lssl
 
 # If WITH_LUA is configured, specify compilation and linkage flags
 # for Lua either manually or using pkg-config. This may require tweaking,

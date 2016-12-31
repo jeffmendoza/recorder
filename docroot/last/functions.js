@@ -33,6 +33,8 @@ function initialize() {
 
 	buttonControlDiv.index = 1;
 	map.controls[google.maps.ControlPosition.BOTTOM_LEFT].push(buttonControlDiv);
+
+	ws_go(); 	// Connect to websocket and start listening
 }
 
 function ButtonControl(controlDiv, map) {
@@ -133,6 +135,7 @@ function map_marker(loc)
 
 	var userdev = username + "/" + device;
 	userdev = renames[userdev] ? renames[userdev] : userdev;
+	userdev = loc.name ? loc.name : userdev;
 
 	var data = {
 		userdev: userdev,
@@ -142,14 +145,16 @@ function map_marker(loc)
 		lon:	loc.lon,
 		fulldate: dt.format("DD MMM YYYY HH:mm:ss"),
 		facedata: loc.face,
+		vel:	loc.vel,
+		cog:	loc.cog,
 	};
 
 	if (loc.addr) {
-		htmldesc = "<b>{{userdev}}</b><br/>{{addr}}<br/><span class='extrainfo'>{{ghash}} <span class='latlon'>({{lat}},{{lon}})</span> {{fulldate}}</span>";
-		shortdesc = "{{userdev}} {{addr}}";
+		htmldesc = "<b>{{userdev}}</b><br/>{{addr}}<br/><span class='extrainfo'>{{ghash}} <span class='latlon'>({{lat}},{{lon}}) v={{vel}}, c={{cog}}</span> {{fulldate}}</span>";
+		shortdesc = "{{{userdev}}} {{addr}}";
 	} else {
-		htmldesc = "<b>{{userdev}}</b><br/>{{lat}}, {{lon}}<br/><span class='extrainfo'>{{ghash}} <span class='latlon'>({{lat}},{{lon}})</span> {{fulldate}}</span>";
-		shortdesc = "{{userdev}} {{lat}},{{lon}}";
+		htmldesc = "<b>{{userdev}}</b><br/>{{lat}}, {{lon}}<br/><span class='extrainfo'>{{ghash}} <span class='latlon'>({{lat}},{{lon}}) v={{vel}}, c={{cog}}</span> {{fulldate}}</span>";
+		shortdesc = "{{{userdev}}} {{lat}},{{lon}}";
 	}
 
 	if (loc.face) {
@@ -213,4 +218,4 @@ function map_marker(loc)
 	}
 }
 
-google.maps.event.addDomListener(window, 'load', initialize);
+// google.maps.event.addDomListener(window, 'load', initialize);

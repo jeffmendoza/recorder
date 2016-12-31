@@ -27,6 +27,8 @@
 #include "json.h"
 #include "util.h"
 #include "misc.h"
+#include "fences.h"
+#include "gcache.h"
 #include "storage.h"
 #include "geohash.h"
 #include "udata.h"
@@ -596,7 +598,7 @@ static int dopublish(struct mg_connection *conn, const char *uri)
 
 	debug(ud, "HTTPPUB clen=%zu, topic=%s", conn->content_len, UB(topic));
 
-	handle_message(ud, UB(topic), payload, conn->content_len, 0, TRUE);
+	handle_message(ud, UB(topic), payload, conn->content_len, 0, TRUE, FALSE);
 
 
 	jarray = populate_friends(conn, u, d);
@@ -834,6 +836,24 @@ static JsonNode *viewdata(struct mg_connection *conn, JsonNode *view, int limit)
 }
 
 /*
+ * Build and return JavaScript file containing an API key variable in it.
+ */
+
+static int apikey(struct mg_connection *conn)
+{
+	struct udata *ud = (struct udata *)conn->server_param;
+	static UT_string *sbuf = NULL;
+
+	utstring_renew(sbuf);
+	utstring_printf(sbuf, "var apiKey = '%s';",
+		ud->browser_apikey ? ud->browser_apikey : "");
+
+	mg_send_header(conn, "Content-type", "application/javascript");
+	mg_printf_data(conn, "%s", UB(sbuf));
+	return (MG_TRUE);
+}
+
+/*
  * We're being asked for a view. `viewname' contains the ID for this view.
  * A view is a JSON file in docroot. The JSON describes which file
  * should actually be served as well as a bunch of other things.
@@ -1049,6 +1069,7 @@ static int dispatch(struct mg_connection *conn, const char *uri)
 		JsonNode *json = json_mkobject();
 
 		json_append_member(json, "version", json_mkstring(VERSION));
+		json_append_member(json, "git", json_mkstring(GIT_VERSION));
 		CLEANUP;
 		return (json_response(conn, json));
 	}
@@ -1400,6 +1421,9 @@ int ev_handler(struct mg_connection *conn, enum mg_event ev)
 				return view(conn, conn->uri + strlen("/view/"));
 			}
 
+			if (strstr(conn->uri, "/apikey.js") != NULL) {
+				return apikey(conn);
+			}
 
 
 			if (!strcmp(conn->request_method, "POST")) {

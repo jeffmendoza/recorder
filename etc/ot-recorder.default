@@ -2,13 +2,14 @@
 #
 # Specify global configuration options for the OwnTracks Recorder
 # and its associated utilities to override compiled-in defaults.
+# Lines beginning with # are comments
 # *** In libconfig versions < 1.4 a trailing semicolon is mandatory
 
 # -----------------------------------------------------
 # Storage directory
 #
 
-# OTR_STORAGEDIR = "/var/spool/owntracks/recorder/store"
+# OTR_STORAGEDIR="/var/spool/owntracks/recorder/store"
 
 # -----------------------------------------------------
 # Address or hostname of the MQTT broker
@@ -81,6 +82,11 @@
 #
 
 # OTR_PRECISION=7
+
+# -----------------------------------------------------
+# Browser API key for Google maps
+#
+# OTR_BROWSERAPIKEY=""
 
 # -----------------------------------------------------
 # List of topics for MQTT to subscribe to, blank separated in a string

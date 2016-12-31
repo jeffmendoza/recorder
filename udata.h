@@ -4,15 +4,17 @@
 #include "json.h"
 
 #ifdef WITH_HTTP
+# include <stdarg.h>
 # include "mongoose.h"
 #endif
-#include "gcache.h"
+// #include "gcache.h"
 
 
 struct udata {
 	JsonNode *topics;		/* Array of topics to subscribe to */
 	int ignoreretained;		/* True if retained messages should be ignored */
 #if WITH_MQTT
+	struct mosquitto *mosq;		/* MQTT connection */
 	char *pubprefix;		/* If not NULL (default), republish modified payload to <pubprefix>/topic */
 	int qos;			/* Subscribe QoS */
 	char *hostname;			/* MQTT broker */
@@ -33,6 +35,7 @@ struct udata {
 	char *http_host;		/* address of http bind */
 	int http_port;			/* port number for above */
 	char *http_logdir;		/* full path to http access log */
+	char *browser_apikey;		/* Google maps browser API key */
 #endif
 #ifdef WITH_LUA
 	char *luascript;		/* Path to Lua script */
@@ -46,6 +49,7 @@ struct udata {
 	char *geokey;			/* Google reverse-geo API key */
 	int debug;			/* enable for debugging */
 	struct gcache *httpfriends;	/* lmdb named database 'friends' */
+	struct gcache *wpdb;		/* lmdb named database 'wp' (waypoints) */
 };
 
 #endif

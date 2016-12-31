@@ -32,14 +32,21 @@
 # include <lua.h>
 # include <lualib.h>
 # include <lauxlib.h>
+# include "fences.h"
 # include "gcache.h"
 # include "json.h"
 # include "version.h"
+# include "fences.h"
 
 static int otr_log(lua_State *lua);
 static int otr_strftime(lua_State *lua);
 static int otr_putdb(lua_State *lua);
 static int otr_getdb(lua_State *lua);
+#ifdef WITH_MQTT
+# include <mosquitto.h>
+static int otr_publish(lua_State *lua);
+static struct mosquitto *MQTTconn = NULL;
+#endif
 
 static struct gcache *LuaDB = NULL;
 
@@ -79,6 +86,8 @@ struct luadata *hooks_init(struct udata *ud, char *script)
 	ld->L = luaL_newstate();
 	luaL_openlibs(ld->L);
 
+	MQTTconn = ud->mosq;
+
 	/*
 	 * Set up a global with some values.
 	 */
@@ -101,6 +110,11 @@ struct luadata *hooks_init(struct udata *ud, char *script)
 
 		lua_pushcfunction(ld->L, otr_getdb);
 		lua_setfield(ld->L, -2, "getdb");
+
+#ifdef WITH_MQTT
+		lua_pushcfunction(ld->L, otr_publish);
+		lua_setfield(ld->L, -2, "publish");
+#endif
 
 	lua_setglobal(ld->L, "otr");
 
@@ -129,6 +143,7 @@ struct luadata *hooks_init(struct udata *ud, char *script)
 
 	return (ld);
 }
+
 
 void hooks_exit(struct luadata *ld, char *reason)
 {
@@ -365,6 +380,35 @@ void hooks_hook(struct udata *ud, char *topic, JsonNode *fullo)
 }
 
 /*
+ * This hook is invoked through fences.c when we determine that a movement
+ * into or out of a geofence has caused a transition.
+ * json is the original JSON we received enhanced with stuff from recorder.
+ */
+
+void hooks_transition(struct udata *ud, char *user, char *device, int event, char *desc, double wplat, double wplon, double lat, double lon, char *topic, JsonNode *json, long meters)
+{
+	JsonNode *j;
+
+	if ((j = json_find_member(json, "_type")) != NULL) {
+		json_remove_from_parent(j);
+	}
+	json_append_member(json, "_type", json_mkstring("transition"));
+	json_append_member(json, "event",
+		event == ENTER ? json_mkstring("enter") : json_mkstring("leave"));
+	json_append_member(json, "desc", json_mkstring(desc));
+	json_append_member(json, "wplat", json_mknumber(wplat));
+	json_append_member(json, "wplon", json_mknumber(wplon));
+	json_append_member(json, "dist", json_mknumber(meters));
+
+	olog(LOG_DEBUG, "**** Lua hook for %s %s\n",
+		event == ENTER ? "ENTER" : "LEAVE", desc);
+
+
+	do_hook("otr_transition", ud, topic, json);
+}
+
+
+/*
  * --- Here come the functions we provide to Lua scripts.
  */
 
@@ -448,4 +492,39 @@ static int otr_getdb(lua_State *lua)
 	}
 	return (rc);
 }
+
+#ifdef WITH_MQTT
+
+/*
+ * Requires two string arguments: topic, payload
+ * and two numeric args: qos and retain
+ * Will be published via MQTT to the Recorder's
+ * open connection.
+ */
+
+int otr_publish(lua_State *lua)
+{
+	const char *topic, *payload;
+	int qos = 0, retain = 0;
+	int rc = 0;
+
+	if (lua_gettop(lua) >= 1) {
+		topic =  lua_tostring(lua, 1);
+		payload =  lua_tostring(lua, 2);
+		qos =  lua_tonumber(lua, 3);
+		retain =  lua_tonumber(lua, 4);
+
+		if (MQTTconn == NULL) {
+			olog(LOG_WARNING, "otr_publish(%s, %s, %d, %d): NULL MQTT connection\n",
+				topic, payload, qos, retain);
+		} else {
+			rc = mosquitto_publish(MQTTconn, NULL, topic,
+		                                strlen(payload), payload, qos, retain);
+			olog(LOG_DEBUG, "otr_publish(%s, %s, %d, %d) == %d\n", topic, payload, qos, retain, rc);
+		}
+	}
+	return (rc);
+}
+#endif
+
 #endif /* WITH_LUA */

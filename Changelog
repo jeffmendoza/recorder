@@ -1,4 +1,53 @@
 
+2016-11-25 version 0.6.9
+- UPD: REC files now use tst from JSON payload as timestamp (#133)
+- FIX: default file is /etc/default/ot-recorder
+- FIX: add support for $OTR_BROWSERAPIKEY from environment (#156)
+- UPD: packages now have API kill in them (#153)
+
+2016-09-23 version 0.6.8
+- UPD: name on live map can be overriden by 'name' in JSON payload
+- NEW: decrypted payloads have "_decrypted":true added to .rec file (#151)
+- NEW: new configuration variable OTR_BROWSERAPIKEY (#146)
+- FIX: Maps browser API key file (apikey.js) is now served by the Recorder (#146)
+- FIX: add CFLAGS for base64 to conver Arch (#128)
+- FIX: if defaults file can't be read, log an error (#131)
+- NEW: otr_publish() from Lua reuses Recorder's authenticated, TLS-enabled MQTT connection (#140)
+- UPD: changed systemd unit file (#137)
+- UPD: README restructured (#138)
+- NEW: ocat -v and api/0/version now show git version/commit
+- FIX: Debian package dependency on libsodium13
+
+2016-07-20 version 0.6.7
+- FIX: don't crash on null payloads
+
+2016-07-19 version 0.6.6
+- FIX: FreeBSD locations api: reset isdst for mktime(3) (#125)
+- FIX: apikey support for last/, map/, and views/ (#124)
+- FIX: don't clobber CFLAGS from config.mk
+- FIX: debian/centos package now automatically installs systemd service (thanks Tomas Lastovick for making us do this :)
+- FIX: centos packages now also install binaries to /usr
+
+2016-05-30 version 0.6.5
+- FIX: paths to binaries
+
+2016-05-30 version 0.6.4
+- FIX: revert debian config file location
+
+2016-05-30 version 0.6.3
+- FIX: views now have a favicon (#121)
+- NEW: Table and Map now have vel and cog (#117)
+- FIX: Table now correctly defaults to last 2 chars of topic for tid (#120)
+- FIX: views no longer accumulate devices; the list is cleared on reload (#107)
+- FIX: CSV publishes work in spite of CR at end of string (#119)
+- NEW: native Debian packaging (#114)
+- FIX: check whether $OTR_CAFILE can actually be opened (#109)
+- FIX: image2card fixed base64 wrapping (#111)
+- FIX: key for decrypting payload is now correctly lowercased from user/device
+- FIX: negative lat/lon in CSV payloads
+- FIX: nested object in payload no longer crashes in Lua hooks
+- UPD: LWT are now stored with reltopic == 'lwt' instead of '*' (#101)
+
 2016-03-07 version 0.6.2
 - FIX: ocat CSV and XML output fixed
 - UPD: _geoprec may be < 0 to prevent new geo lookups

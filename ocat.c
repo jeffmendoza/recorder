@@ -27,6 +27,9 @@
 # include <mosquitto.h>
 #endif
 #include "json.h"
+#include "udata.h"
+#include "fences.h"
+#include "gcache.h"
 #include "storage.h"
 #include "util.h"
 #include "misc.h"
@@ -128,6 +131,7 @@ void print_versioninfo()
 #ifdef WITH_ENCRYPT
 	printf("\tSODIUM VERSION = %s\n", SODIUM_VERSION_STRING);
 #endif
+	printf("\tGIT VERSION = %s\n", GIT_VERSION);
 
 	exit(0);
 }

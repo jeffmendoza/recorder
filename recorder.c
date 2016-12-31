@@ -34,6 +34,7 @@
 #include <sys/utsname.h>
 #include <regex.h>
 #include "recorder.h"
+#include "udata.h"
 #include "utstring.h"
 #include "geo.h"
 #include "geohash.h"
@@ -41,6 +42,7 @@
 #include "misc.h"
 #include "util.h"
 #include "storage.h"
+#include "fences.h"
 #include "gcache.h"
 #ifdef WITH_HTTP
 # include "http.h"
@@ -111,7 +113,7 @@ int do_info(void *userdata, UT_string *username, UT_string *device, JsonNode *js
 
 	/* I know the payload is valid JSON: write card */
 
-	if ((fp = pathn("wb", "cards", username, NULL, "json")) != NULL) {
+	if ((fp = pathn("wb", "cards", username, NULL, "json", time(0))) != NULL) {
 		char *js = json_stringify(json, NULL);
 		if (js) {
 			fprintf(fp, "%s\n", js);
@@ -143,7 +145,7 @@ int do_info(void *userdata, UT_string *username, UT_string *device, JsonNode *js
 
 	/* We have a base64-encoded "face". Decode it and store binary image */
 	if ((img = base64_decode(UB(face), &imglen)) != NULL) {
-		if ((fp = pathn("wb", "photos", username, NULL, "png")) != NULL) {
+		if ((fp = pathn("wb", "photos", username, NULL, "png", time(0))) != NULL) {
 			fwrite(img, sizeof(char), imglen, fp);
 			fclose(fp);
 		}
@@ -278,10 +280,11 @@ JsonNode *csv_to_json(char *payload)
 
 /*
  * Store payload in REC file unless our Lua putrec() function says
- * we shouldn't for this particular user/device combo.
+ * we shouldn't for this particular user/device combo. Use the epoch
+ * time to construct path name and "key"
  */
 
-static void putrec(struct udata *ud, time_t now, UT_string *reltopic, UT_string *username, UT_string *device, char *string)
+static void putrec(struct udata *ud, time_t epoch, UT_string *reltopic, UT_string *username, UT_string *device, char *string)
 {
 	FILE *fp;
 	int rc = 0;
@@ -294,13 +297,13 @@ static void putrec(struct udata *ud, time_t now, UT_string *reltopic, UT_string 
 #endif
 
 	if (rc == 0) {
-		if ((fp = pathn("a", "rec", username, device, "rec")) == NULL) {
+		if ((fp = pathn("a", "rec", username, device, "rec", epoch)) == NULL) {
 			olog(LOG_ERR, "Cannot write REC for %s/%s: %m",
 				UB(username), UB(device));
 			return;
 		}
 
-		fprintf(fp, RECFORMAT, isotime(now),
+		fprintf(fp, RECFORMAT, isotime(epoch),
 			UB(reltopic), string);
 		fclose(fp);
 	}
@@ -387,6 +390,8 @@ void waypoints_dump(struct udata *ud, UT_string *username, UT_string *device, ch
 	}
 
 	xx_dump(ud, username, device, (js) ? js : payloadstring, "waypoints", "otrw");
+	load_otrw_from_string(ud, UB(username), UB(device), (js) ? js : payloadstring);
+
 	if (js)
 		free(js);
 }
@@ -481,6 +486,12 @@ unsigned char *decrypt(struct udata *ud, char *topic, char *p64, char *username,
 	utstring_renew(userdev);
 	utstring_printf(userdev, "%s-%s", username, device);
 
+	lowercase(UB(userdev));
+	for (n = 0; n < strlen(UB(userdev)); n++) {
+		if (UB(userdev)[n] == ' ')
+			UB(userdev)[n] = '-';
+	}
+
 	memset(key, 0, sizeof(key));
 	klen = gcache_get(ud->keydb, (char *)UB(userdev), (char *)key, sizeof(key));
 	if (klen < 1) {
@@ -523,7 +534,7 @@ unsigned char *decrypt(struct udata *ud, char *topic, char *p64, char *username,
 }
 #endif /* ENCRYPT */
 
-void handle_message(void *userdata, char *topic, char *payload, size_t payloadlen, int retain, int httpmode)
+void handle_message(void *userdata, char *topic, char *payload, size_t payloadlen, int retain, int httpmode, int was_encrypted)
 {
 	JsonNode *json, *j, *geo = NULL;
 	char *tid = NULL, *t = NULL, *p;
@@ -535,7 +546,7 @@ void handle_message(void *userdata, char *topic, char *payload, size_t payloadle
 	static UT_string *basetopic = NULL, *username = NULL, *device = NULL, *addr = NULL, *cc = NULL, *ghash = NULL, *ts = NULL;
 	static UT_string *reltopic = NULL, *filename = NULL;
 	char *jsonstring, *_typestr = NULL;
-	time_t now;
+	time_t now, epoch;
 	int pingping = FALSE, skipslash = 0, geoprec = geohash_prec();
 	int r_ok = TRUE;			/* True if recording enabled for a publish */
 	payload_type _type;
@@ -552,6 +563,8 @@ void handle_message(void *userdata, char *topic, char *payload, size_t payloadle
 
 	time(&now);
 	monitorhook(ud, now, topic);
+
+	chomp(payload);
 
 	debug(ud, "%s (plen=%d, r=%d) [%s]", topic, payloadlen, retain, payload);
 	if (payloadlen == 0) {
@@ -649,7 +662,8 @@ void handle_message(void *userdata, char *topic, char *payload, size_t payloadle
 
 	if ((json = json_decode(payload)) == NULL) {
 		if ((json = csv_to_json(payload)) == NULL) {
-			/* It's not JSON or it's not a location CSV; store it */
+			/* It's not JSON or it's not a location CSV; store it using
+			 * now as time -- we have no other */
 			putrec(ud, now, reltopic, username, device, bindump(payload, payloadlen));
 			return;
 		}
@@ -742,7 +756,7 @@ void handle_message(void *userdata, char *topic, char *payload, size_t payloadle
 
 					cleartext = (char *)decrypt(ud, topic, j->string_, UB(username), UB(device));
 					if (cleartext != NULL) {
-						handle_message(ud, topic, cleartext, strlen(cleartext), retain, httpmode);
+						handle_message(ud, topic, cleartext, strlen(cleartext), retain, httpmode, TRUE);
 						free(cleartext);
 					}
 					if (_typestr) free(_typestr);
@@ -827,14 +841,6 @@ void handle_message(void *userdata, char *topic, char *payload, size_t payloadle
 		}
 	}
 
-#if 0
-	/* Haversine */
-
-	{
-		double d = haversine_dist(lat, lon, 52.03431, 8.47654);
-		printf("*** d=%lf meters\n", d);
-	}
-#endif
 
 	/*
 	 * If the topic we are handling is in topic2tid, replace the TID
@@ -910,6 +916,11 @@ void handle_message(void *userdata, char *topic, char *payload, size_t payloadle
 		json_append_member(json, "_http", json_mkbool(1));
 	}
 
+	if (was_encrypted) {
+		json_append_member(json, "_decrypted", json_mkbool(1));
+	}
+
+
 
 	/*
 	 * We have normalized data in the JSON, so we can now write it
@@ -918,7 +929,10 @@ void handle_message(void *userdata, char *topic, char *payload, size_t payloadle
 
 	if (!pingping) {
 		if ((jsonstring = json_stringify(json, NULL)) != NULL) {
-			putrec(ud, now, reltopic, username, device, jsonstring);
+			double d_epoch = number(json, "tst");
+
+			epoch = (isnan(d_epoch)) ? now : d_epoch;
+			putrec(ud, epoch, reltopic, username, device, jsonstring);
 			free(jsonstring);
 		}
 	}
@@ -1037,7 +1051,8 @@ void handle_message(void *userdata, char *topic, char *payload, size_t payloadle
 			}
 		}
 	}
-	
+
+	check_fences(ud, UB(username), UB(device), lat, lon, json, topic);
 
     cleanup:
 	if (geo)	json_delete(geo);
@@ -1053,7 +1068,7 @@ void on_message(struct mosquitto *mosq, void *userdata, const struct mosquitto_m
 {
 	struct udata *ud = (struct udata *)userdata;
 
-	handle_message(ud, m->topic, m->payload, m->payloadlen, m->retain, FALSE);
+	handle_message(ud, m->topic, m->payload, m->payloadlen, m->retain, FALSE, FALSE);
 }
 
 
@@ -1136,6 +1151,7 @@ void usage(char *prog)
 	printf("  --http-port <port>	-A     HTTP port (8083); 0 to disable HTTP\n");
 	printf("  --doc-root <directory>       document root (%s)\n", DOCROOT);
 	printf("  --http-logdir <directory>    directory in which to store access.log\n");
+	printf("  --browser-apikey <key>       Google maps browser API key\n");
 #endif
 #ifdef WITH_LUA
 	printf("  --lua-script <script.lua>    path to Lua script. If unset, no Lua hooks\n");
@@ -1147,6 +1163,7 @@ void usage(char *prog)
 	printf("\n");
 	printf("Options override these environment variables:\n");
 	printf("  $OTR_STORAGEDIR\n");
+	printf("  $OTR_BROWSERAPIKEY\n");
 #ifdef WITH_MQTT
 	printf("  $OTR_HOST		MQTT hostname\n");
 	printf("  $OTR_PORT		MQTT port\n");
@@ -1181,6 +1198,7 @@ int main(int argc, char **argv)
 	char *progname = *argv;
 
 #if WITH_MQTT
+	udata.mosq		= NULL;
 	udata.qos		= DEFAULT_QOS;
 	udata.pubprefix		= NULL;
 	udata.username		= NULL;
@@ -1203,6 +1221,7 @@ int main(int argc, char **argv)
 	udata.http_host		= strdup("localhost");
 	udata.http_port		= 8083;
 	udata.http_logdir	= NULL;
+	udata.browser_apikey	= NULL;
 #endif
 #ifdef WITH_LUA
 	udata.luascript		= NULL;
@@ -1262,6 +1281,11 @@ int main(int argc, char **argv)
 	}
 
 #endif
+	if ((p = getenv("OTR_BROWSERAPIKEY")) != NULL) {
+		if (ud->browser_apikey)
+			free(ud->browser_apikey);
+		ud->browser_apikey = strdup(p);
+	}
 
 	while (1) {
 		static struct option long_options[] = {
@@ -1293,6 +1317,7 @@ int main(int argc, char **argv)
 			{ "http-port",	required_argument,	0, 	'A'},
 			{ "doc-root",	required_argument,	0, 	2},
 			{ "http-logdir",	required_argument,	0, 	14},
+			{ "browser-apikey",	required_argument,	0, 	15},
 #endif
 			{0, 0, 0, 0}
 		  };
@@ -1377,6 +1402,11 @@ int main(int argc, char **argv)
 			case 14:
 				if (ud->http_logdir) free(ud->http_logdir);
 				ud->http_logdir = strdup(optarg);
+				break;
+			case 15:
+				if (ud->browser_apikey) free(ud->browser_apikey);
+				ud->browser_apikey = strdup(optarg);
+				break;
 #endif
 			case 'D':
 				ud->skipdemo = FALSE;
@@ -1445,6 +1475,12 @@ int main(int argc, char **argv)
 #endif /* !ENCRYPT */
 		if ((gt = gcache_open(path, "friends", FALSE)) == NULL) {
 			fprintf(stderr, "Cannot lmdb-open `friends'\n");
+			exit(2);
+		}
+		gcache_close(gt);
+
+		if ((gt = gcache_open(path, "wp", FALSE)) == NULL) {
+			fprintf(stderr, "Cannot lmdb-open `wp'\n");
 			exit(2);
 		}
 		gcache_close(gt);
@@ -1519,19 +1555,9 @@ int main(int argc, char **argv)
 	ud->keydb = gcache_open(err, "keys", TRUE);
 # endif
 	ud->httpfriends = gcache_open(err, "friends", TRUE);
+	ud->wpdb = gcache_open(err, "wp", FALSE);
 
-#if WITH_LUA
-	/*
-	 * If option for lua-script has not been given, ignore all hooks.
-	 */
-
-	if (ud->luascript) {
-		if ((udata.luadata = hooks_init(ud, ud->luascript)) == NULL) {
-			olog(LOG_ERR, "Stopping because loading of Lua script %s failed", ud->luascript);
-			exit(1);
-		}
-	}
-#endif
+	load_fences(ud);
 
 #if WITH_ENCRYPT
 	if (sodium_init() == -1) {
@@ -1570,6 +1596,11 @@ int main(int argc, char **argv)
 
 		if (ud->cafile && *ud->cafile) {
 
+			if (access(ud->cafile, R_OK) != 0) {
+				olog(LOG_ERR, "cafile configured as `%s' can't be opened: %m", ud->cafile);
+				exit(2);
+			}
+
 			rc = mosquitto_tls_set(mosq,
 				ud->cafile,		/* cafile */
 				NULL,			/* capath */
@@ -1594,7 +1625,7 @@ int main(int argc, char **argv)
 		olog(LOG_INFO, "connecting to MQTT on %s:%d as clientID %s %s TLS",
 			ud->hostname, ud->port,
 			ud->clientid,
-			(ud->cafile) ? "with" : "without");
+			(ud->cafile && *ud->cafile) ? "with" : "without");
 
 		rc = mosquitto_connect(mosq, ud->hostname, ud->port, 60);
 		if (rc) {
@@ -1608,10 +1639,26 @@ int main(int argc, char **argv)
 			mosquitto_lib_cleanup();
 			return rc;
 		}
+		/* Explicitly set MQTT connection for Lua's otr_publish() */
+		ud->mosq = mosq;
 	} else {
 		olog(LOG_INFO, "Not using MQTT: disabled by port=0");
+		ud->mosq = NULL;
 	}
 #endif /* WITH_MQTT */
+
+#if WITH_LUA
+	/*
+	 * If option for lua-script has not been given, ignore all hooks.
+	 */
+
+	if (ud->luascript) {
+		if ((udata.luadata = hooks_init(ud, ud->luascript)) == NULL) {
+			olog(LOG_ERR, "Stopping because loading of Lua script %s failed", ud->luascript);
+			exit(1);
+		}
+	}
+#endif
 
 #ifdef WITH_HTTP
 	if (ud->http_port) {
@@ -1652,7 +1699,10 @@ int main(int argc, char **argv)
 	while (run) {
 #ifdef WITH_MQTT
 		if (ud->port != 0) {
-			loop_timeout = 0;
+#if WITH_HTTP
+			if (ud->http_port != 0)
+#endif /* WITH_HTTP */
+				loop_timeout = 0; /* this belongs to above `if' */
 			rc = mosquitto_loop(mosq, loop_timeout, /* max-packets */ 1);
 			if (run && rc) {
 				olog(LOG_INFO, "MQTT connection: rc=%d [%s] (errno=%d; %s). Sleeping...", rc, mosquitto_strerror(rc), errno, strerror(errno));
@@ -1674,6 +1724,7 @@ int main(int argc, char **argv)
 	gcache_close(ud->gc);
 	gcache_close(ud->t2t);
 	gcache_close(ud->httpfriends);
+	gcache_close(ud->wpdb);
 #ifdef WITH_LUA
 	if (ud->luadb)
 		gcache_close(ud->luadb);
@@ -1687,6 +1738,7 @@ int main(int argc, char **argv)
 #ifdef WITH_HTTP
 	mg_destroy_server(&udata.mgserver);
 	free(ud->http_host);
+	free(ud->browser_apikey);
 	if (ud->http_logdir) free(ud->http_logdir);
 #endif
 

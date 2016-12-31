@@ -3,7 +3,7 @@
 
 // https://developers.google.com/maps/documentation/javascript/datalayer
 
-var infowindow = new google.maps.InfoWindow();
+var infowindow;
 
 function processPoints(geometry, callback, thisArg) {
 	if (geometry instanceof google.maps.LatLng) {
@@ -17,10 +17,12 @@ function processPoints(geometry, callback, thisArg) {
 	}
 }
 
-function initialize() {
+function initialize_googlemaps() {
 
 	var map;
 	var center = new google.maps.LatLng( 46.993665, 10.399188);
+
+	infowindow = new google.maps.InfoWindow();
 
 	mapOptions = {
 		center: center,
@@ -92,5 +94,3 @@ function initialize() {
 		infowindow.open(map);
 	});
 }
-
-google.maps.event.addDomListener(window, 'load', initialize);
