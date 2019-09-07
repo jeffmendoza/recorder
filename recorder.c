@@ -66,27 +66,6 @@
 
 static int run = 1;
 
-double number(JsonNode *j, char *element)
-{
-	JsonNode *m;
-	double d;
-
-	if ((m = json_find_member(j, element)) != NULL) {
-		if (m->tag == JSON_NUMBER) {
-			return (m->number_);
-		} else if (m->tag == JSON_STRING) {
-			d = atof(m->string_);
-			/* Normalize to number */
-			json_remove_from_parent(m);
-			json_delete(m);
-			json_append_member(j, element, json_mknumber(d));
-			return (d);
-		}
-	}
-
-	return (NAN);
-}
-
 static const char *ltime(time_t t) {
 	static char buf[] = "HH:MM:SS";
 
@@ -113,7 +92,7 @@ int do_info(void *userdata, UT_string *username, UT_string *device, JsonNode *js
 
 	/* I know the payload is valid JSON: write card */
 
-	if ((fp = pathn("wb", "cards", username, NULL, "json", time(0))) != NULL) {
+	if ((fp = pathn("wb", "cards", username, device, "json", time(0))) != NULL) {
 		char *js = json_stringify(json, NULL);
 		if (js) {
 			fprintf(fp, "%s\n", js);
@@ -145,7 +124,7 @@ int do_info(void *userdata, UT_string *username, UT_string *device, JsonNode *js
 
 	/* We have a base64-encoded "face". Decode it and store binary image */
 	if ((img = base64_decode(UB(face), &imglen)) != NULL) {
-		if ((fp = pathn("wb", "photos", username, NULL, "png", time(0))) != NULL) {
+		if ((fp = pathn("wb", "photos", username, device, "png", time(0))) != NULL) {
 			fwrite(img, sizeof(char), imglen, fp);
 			fclose(fp);
 		}
@@ -383,7 +362,6 @@ void waypoints_dump(struct udata *ud, UT_string *username, UT_string *device, ch
 		return;
 
 	if ((j = json_find_member(json, "r")) != NULL) {
-		json_remove_from_parent(j);
 		json_delete(j);
 		js = json_stringify(json, NULL);
 		json_delete(json);
@@ -621,6 +599,16 @@ void handle_message(void *userdata, char *topic, char *payload, size_t payloadle
 	if (utstring_len(reltopic) == 0)
 		utstring_printf(reltopic, "-");
 
+	/*
+	 * Are we handing ../user/device/pico from OwnTracks Pico / Homie?
+	 * Pretend we have a base-topic publish, so change "/pico" to "*"
+	 */
+
+	if ( (count == (4 + skipslash)) && (strcmp(UB(reltopic), "pico") == 0)) {
+		utstring_renew(reltopic);
+		utstring_printf(reltopic, "*");
+	}
+
 
 	utstring_printf(basetopic, "%s/%s/%s", topics[0 + skipslash], topics[1 + skipslash], topics[2 + skipslash]);
 	utstring_printf(username, "%s", topics[1 + skipslash]);
@@ -791,7 +779,6 @@ void handle_message(void *userdata, char *topic, char *payload, size_t payloadle
 	if ((j = json_find_member(json, "tst")) != NULL) {
 		if (j->tag == JSON_STRING) {
 			tst = strtoul(j->string_, NULL, 10);
-			json_remove_from_parent(j);
 			json_delete(j);
 			json_append_member(json, "tst", json_mknumber(tst));
 		} else {
@@ -815,7 +802,6 @@ void handle_message(void *userdata, char *topic, char *payload, size_t payloadle
 	if ((j = json_find_member(json, "acc")) != NULL) {
 		if (j->tag == JSON_STRING) {
 			acc = atof(j->string_);
-			json_remove_from_parent(j);
 			json_delete(j);
 			json_append_member(json, "acc", json_mknumber(acc));
 		}
@@ -853,7 +839,6 @@ void handle_message(void *userdata, char *topic, char *payload, size_t payloadle
 
 		if ((blen = gcache_get(ud->t2t, topic, newtid, sizeof(newtid))) > 0) {
 			if ((j = json_find_member(json, "tid")) != NULL) {
-				json_remove_from_parent(j);
 				json_delete(j);
 			}
 			json_append_member(json, "tid", json_mkstring(newtid));
@@ -877,40 +862,62 @@ void handle_message(void *userdata, char *topic, char *payload, size_t payloadle
 
 	cached = FALSE;
 	if (ud->revgeo == TRUE) {
-		if ((geo = gcache_json_get(ud->gc, UB(ghash))) != NULL) {
-			/* Habemus cached data */
-			
-			cached = TRUE;
+#ifdef WITH_LUA
+		char *lua_func = "otr_revgeo";
 
-			if ((j = json_find_member(geo, "cc")) != NULL) {
-				utstring_printf(cc, "%s", j->string_);
+		if ((j = json_find_member(json, "_lua")) != NULL) {
+			if (j->tag == JSON_STRING) {
+				lua_func = j->string_;
 			}
-			if ((j = json_find_member(geo, "addr")) != NULL) {
-				utstring_printf(addr, "%s", j->string_);
+		}
+		if ((geo = hook_revgeo(ud, lua_func, topic, UB(username), UB(device), lat, lon)) != NULL) {
+			if ((j = json_find_member(geo, "_rec")) != NULL) {
+				if (j->bool_ == true) {
+					json_delete(j);
+					json_copy_to_object(json, geo, false);
+					geo = NULL;	/* Reset so it's not copied again later */
+				}
 			}
 		} else {
-			if (geoprec > 0) {
-				if ((geo = revgeo(ud, lat, lon, addr, cc)) != NULL) {
-					gcache_json_put(ud->gc, UB(ghash), geo);
-				} else {
-					/* We didn't obtain reverse Geo, maybe because of over
-					 * quota; make a note of the missing geohash */
-
-					char gfile[BUFSIZ];
-					FILE *fp;
-
-					snprintf(gfile, BUFSIZ, "%s/ghash/missing", STORAGEDIR);
-					if ((fp = fopen(gfile, "a")) != NULL) {
-						fprintf(fp, "%s %lf %lf\n", UB(ghash), lat, lon);
-						fclose(fp);
+#endif /* WITH_LUA */
+			if ((geo = gcache_json_get(ud->gc, UB(ghash))) != NULL) {
+				/* Habemus cached data */
+				
+				cached = TRUE;
+	
+				if ((j = json_find_member(geo, "cc")) != NULL) {
+					utstring_printf(cc, "%s", j->string_);
+				}
+				if ((j = json_find_member(geo, "addr")) != NULL) {
+					utstring_printf(addr, "%s", j->string_);
+				}
+			} else {
+				if (geoprec > 0) {
+					if ((geo = revgeo(ud, lat, lon, addr, cc)) != NULL) {
+						gcache_json_put(ud->gc, UB(ghash), geo);
+					} else {
+						/* We didn't obtain reverse Geo, maybe because of over
+						 * quota; make a note of the missing geohash */
+	
+						char gfile[BUFSIZ];
+						FILE *fp;
+	
+						snprintf(gfile, BUFSIZ, "%s/ghash/missing", STORAGEDIR);
+						if ((fp = fopen(gfile, "a")) != NULL) {
+							fprintf(fp, "%s %lf %lf\n", UB(ghash), lat, lon);
+							fclose(fp);
+						}
 					}
 				}
 			}
+#ifdef WITH_LUA
 		}
+#endif /* WITH_LUA */
 	} else {
 		utstring_printf(cc, "??");
 		utstring_printf(addr, "n.a.");
 	}
+
 
 	if (httpmode) {
 		json_append_member(json, "_http", json_mkbool(1));
@@ -1053,6 +1060,7 @@ void handle_message(void *userdata, char *topic, char *payload, size_t payloadle
 	}
 
 	check_fences(ud, UB(username), UB(device), lat, lon, json, topic);
+	check_fences(ud, "_", "_", lat, lon, json, topic);
 
     cleanup:
 	if (geo)	json_delete(geo);
@@ -1141,6 +1149,8 @@ void usage(char *prog)
 	printf("  --pubprefix		-P     republish prefix (dflt: no republish)\n");
 	printf("  --host		-H     MQTT host (localhost)\n");
 	printf("  --port		-p     MQTT port (1883)\n");
+	printf("  --psk                        PSK hint\n");
+	printf("  --identity                   PSK identity\n");
 #endif
 	printf("  --logfacility		       syslog facility (local0)\n");
 	printf("  --quiet		       disable printing of messages to stdout\n");
@@ -1152,13 +1162,14 @@ void usage(char *prog)
 	printf("  --doc-root <directory>       document root (%s)\n", DOCROOT);
 	printf("  --http-logdir <directory>    directory in which to store access.log\n");
 	printf("  --browser-apikey <key>       Google maps browser API key\n");
+	printf("  --viewsdir <directory>       full path to JSON views. Default: (%s/views)\n", DOCROOT);
 #endif
 #ifdef WITH_LUA
 	printf("  --lua-script <script.lua>    path to Lua script. If unset, no Lua hooks\n");
 #endif
 	printf("  --precision		       ghash precision (dflt: %d)\n", GHASHPREC);
 	printf("  --norec		       don't maintain REC files\n");
-	printf("  --geokey		       optional Google reverse-geo API key\n");
+	printf("  --geokey		       optional reverse-geo API key\n");
 	printf("  --debug  		       additional debugging\n");
 	printf("\n");
 	printf("Options override these environment variables:\n");
@@ -1183,7 +1194,11 @@ int main(int argc, char **argv)
 	UT_string *clientid;
 	int rc, i;
 	struct utsname uts;
+	bool do_tls = false;
 #endif /* WITH_MQTT */
+#if WITH_HTTP
+	UT_string *uviewsdir;
+#endif /* WITH_HTTP */
 	char err[1024], *p;
 	char *logfacility = "local0";
 #if WITH_MQTT
@@ -1208,6 +1223,11 @@ int main(int argc, char **argv)
 	udata.clientid		= NULL;
 	udata.topics		= NULL;
 	udata.cafile		= NULL;
+	udata.capath		= NULL;
+	udata.certfile		= NULL;
+	udata.keyfile		= NULL;
+	udata.psk		= NULL;
+	udata.identity		= NULL;
 #endif
 	udata.ignoreretained	= TRUE;
 	udata.skipdemo		= TRUE;
@@ -1222,6 +1242,10 @@ int main(int argc, char **argv)
 	udata.http_port		= 8083;
 	udata.http_logdir	= NULL;
 	udata.browser_apikey	= NULL;
+	udata.viewsdir		= NULL;
+
+	utstring_new(uviewsdir);
+	utstring_printf(uviewsdir, "%s/views", DOCROOT);
 #endif
 #ifdef WITH_LUA
 	udata.luascript		= NULL;
@@ -1280,12 +1304,38 @@ int main(int argc, char **argv)
 		ud->cafile = strdup(p);
 	}
 
+	if ((p = getenv("OTR_CAPATH")) != NULL) {
+		if (ud->capath)
+			free(ud->capath);
+		ud->capath = strdup(p);
+	}
+
+	if ((p = getenv("OTR_CERTFILE")) != NULL) {
+		if (ud->certfile)
+			free(ud->certfile);
+		ud->certfile = strdup(p);
+	}
+
+	if ((p = getenv("OTR_KEYFILE")) != NULL) {
+		if (ud->keyfile)
+			free(ud->keyfile);
+		ud->keyfile = strdup(p);
+	}
+
 #endif
+	if ((p = getenv("OTR_GEOKEY")) != NULL) {
+		if (ud->geokey)
+			free(ud->geokey);
+		ud->geokey = strdup(p);
+	}
+
+#if WITH_HTTP
 	if ((p = getenv("OTR_BROWSERAPIKEY")) != NULL) {
 		if (ud->browser_apikey)
 			free(ud->browser_apikey);
 		ud->browser_apikey = strdup(p);
 	}
+#endif
 
 	while (1) {
 		static struct option long_options[] = {
@@ -1299,6 +1349,8 @@ int main(int argc, char **argv)
 			{ "qos",	required_argument,	0, 	'q'},
 			{ "host",	required_argument,	0, 	'H'},
 			{ "port",	required_argument,	0, 	'p'},
+			{ "psk",	required_argument,	0, 	20},
+			{ "identity",	required_argument,	0, 	21},
 #endif /* !MQTT */
 			{ "storage",	required_argument,	0, 	'S'},
 			{ "logfacility",	required_argument,	0, 	4},
@@ -1318,6 +1370,7 @@ int main(int argc, char **argv)
 			{ "doc-root",	required_argument,	0, 	2},
 			{ "http-logdir",	required_argument,	0, 	14},
 			{ "browser-apikey",	required_argument,	0, 	15},
+			{ "viewsdir",	required_argument,	0, 	16},
 #endif
 			{0, 0, 0, 0}
 		  };
@@ -1381,6 +1434,12 @@ int main(int argc, char **argv)
 			case 'p':
 				ud->port = atoi(optarg);
 				break;
+			case 20:
+				ud->psk = strdup(optarg);
+				break;
+			case 21:
+				ud->identity = strdup(optarg);
+				break;
 #endif /* WITH_MQTT */
 			case 5:
 				geohash_setprec(atoi(optarg));
@@ -1406,6 +1465,10 @@ int main(int argc, char **argv)
 			case 15:
 				if (ud->browser_apikey) free(ud->browser_apikey);
 				ud->browser_apikey = strdup(optarg);
+				break;
+			case 16:
+				if (ud->viewsdir) free(ud->viewsdir);
+				ud->viewsdir = strdup(optarg);
 				break;
 #endif
 			case 'D':
@@ -1594,18 +1657,34 @@ int main(int argc, char **argv)
 			mosquitto_username_pw_set(mosq, ud->username, ud->password);
 		}
 
-		if (ud->cafile && *ud->cafile) {
+		if (ud->psk && (ud->cafile || ud->capath)) {
+			olog(LOG_ERR, "Configuring TLS together with PSK is an error");
+			exit(2);
+		}
 
-			if (access(ud->cafile, R_OK) != 0) {
-				olog(LOG_ERR, "cafile configured as `%s' can't be opened: %m", ud->cafile);
-				exit(2);
+		if (ud->psk && *ud->psk && ud->identity && *ud->identity) {
+			rc = mosquitto_tls_psk_set(mosq,
+				ud->psk,
+				ud->identity,
+				NULL);			/* Ciphers */
+		}
+
+		do_tls =  (ud->cafile || ud->capath);
+
+		if (do_tls) {
+
+			if (ud->cafile) {
+				if (access(ud->cafile, R_OK) != 0) {
+					olog(LOG_ERR, "cafile configured as `%s' can't be opened: errno=%d", ud->cafile, errno);
+					exit(2);
+				}
 			}
 
 			rc = mosquitto_tls_set(mosq,
 				ud->cafile,		/* cafile */
-				NULL,			/* capath */
-				NULL,			/* certfile */
-				NULL,			/* keyfile */
+				ud->capath,		/* capath */
+				ud->certfile,		/* certfile */
+				ud->keyfile,		/* keyfile */
 				NULL			/* pw_callback() */
 				);
 			if (rc != MOSQ_ERR_SUCCESS) {
@@ -1622,10 +1701,11 @@ int main(int argc, char **argv)
 
 		}
 
-		olog(LOG_INFO, "connecting to MQTT on %s:%d as clientID %s %s TLS",
+		olog(LOG_INFO, "connecting to MQTT on %s:%d as clientID %s %s %s",
 			ud->hostname, ud->port,
 			ud->clientid,
-			(ud->cafile && *ud->cafile) ? "with" : "without");
+			do_tls ? "with" : "without",
+			(ud->psk && *ud->identity) ? "PSK" : "TLS");
 
 		rc = mosquitto_connect(mosq, ud->hostname, ud->port, 60);
 		if (rc) {
@@ -1710,7 +1790,9 @@ int main(int argc, char **argv)
 				mosquitto_reconnect(mosq);
 			}
 		} else {
+#if WITH_HTTP
 			http_pollms = 10000;
+#endif
 		}
 #endif
 #ifdef WITH_HTTP
@@ -1739,6 +1821,7 @@ int main(int argc, char **argv)
 	mg_destroy_server(&udata.mgserver);
 	free(ud->http_host);
 	free(ud->browser_apikey);
+	free(ud->viewsdir);
 	if (ud->http_logdir) free(ud->http_logdir);
 #endif
 
@@ -1760,6 +1843,9 @@ int main(int argc, char **argv)
 	free(ud->hostname);
 	if (ud->clientid) free(ud->clientid);
 	if (ud->cafile) free(ud->cafile);
+	if (ud->capath) free(ud->capath);
+	if (ud->certfile) free(ud->certfile);
+	if (ud->keyfile) free(ud->keyfile);
 #endif
 
 	return (0);

@@ -6,7 +6,7 @@ function initialize_leaflet() {
     attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
   }).addTo(map);
 
-  
+
   var dataURL = location.protocol + "//" + location.host;
 
   var parts = location.pathname.split('/');
@@ -30,31 +30,33 @@ function initialize_leaflet() {
     type: "FeatureCollection",
     features: []
   };
+  var lastLatLng = L.latLng(0.0, 0.0);
 
-  var geojsonLayer = new L.GeoJSON( empty_geojson , {
+  var geojsonLayer = new L.GeoJSON(empty_geojson, {
     pointToLayer: function (feature, latlng) {
       return L.circleMarker(latlng, geojsonMarkerOptions);
     },
     onEachFeature: function(feature, layer) {
-      if (feature.geometry.type == "Point") {
-        var data ={}
-        data.lat = feature.geometry.coordinates[0].toFixed(4);
-        data.lon = feature.geometry.coordinates[1].toFixed(4);
-        data.addr = feature.properties.address;
-        var tst = feature.properties.tst;
-        var dt = moment.utc(tst * 1000).local();
-        data.tst = tst;
-        data.fulldate = dt.format("DD MMM YYYY HH:mm:ss")
-        var t = "{{ addr }}<br/><span class='latlon'>({{ lat }},{{lon}})</span> {{ fulldate }}";
-        if (typeof(tst) === 'undefined') {
-            t = "Position: {{lat}}, {{lon}}";
-        }
+      if (feature.geometry.type == 'Point') {
+        var data ={};
+        data.address = feature.properties.address;
+        data.lat = feature.geometry.coordinates[1].toFixed(5);
+        data.lon = feature.geometry.coordinates[0].toFixed(5);
+        data.vel = feature.properties.vel;
+        data.tst = feature.properties.tst;
+        var localtime = moment.utc(data.tst * 1000).local();
+        data.timestring = localtime.format('YYYY-MM-DD, ddd, HH:mm:ss Z');
 
-        layer.bindPopup(Mustache.render(t, data));
+        var text = [];
+        if(data.timestring) {text.push('{{ timestring }}')}
+        if(data.lat && data.lon) {text.push('<span class="latlon">{{ lat }},{{ lon }}</span>')}
+        if(data.address) {text.push('{{ address }}')}
+        if(data.vel !== undefined) {text.push('{{ vel }} km/h')}
+        layer.bindPopup(Mustache.render(text.join('<br/>'), data));
       }
     },
     style : function(feature) {
-      if (feature.geometry.type == "Point") {
+      if (feature.geometry.type == 'Point') {
         return {}
       } else {
         return {
@@ -62,9 +64,26 @@ function initialize_leaflet() {
           weight : 4,
         }
       }
+    },
+    coordsToLatLng: function(coords) {
+       var lat = coords[1];
+       var lon = coords[0];
+       var dist0 = Math.abs(lon - lastLatLng.lng);
+       var dist1 = Math.abs(lon + 360.0 - lastLatLng.lng);
+       var dist2 = Math.abs(lon - 360.0 - lastLatLng.lng);
+       if (dist0 > dist1 || dist0 > dist2) {
+	       if (dist0 > dist1) {
+		       lon = lon + 360.0;
+	       } else {
+		       lon = lon - 360.0;
+	       }
+       }
+       var latLng = L.GeoJSON.coordsToLatLng([lon, lat]);
+       lastLatLng = latLng;
+       return latLng
     }
   });
-  
+
   map.addLayer(geojsonLayer);
 
   $.getJSON( dataURL, function( data ) {

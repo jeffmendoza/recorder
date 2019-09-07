@@ -4,7 +4,7 @@
 
 [![Build Status](https://travis-ci.org/owntracks/recorder.svg?branch=master)](https://travis-ci.org/owntracks/recorder)
 
-The _OwnTracks Recorder_ is a lightweight program for storing and accessing location data published via MQTT (or HTTP) by the [OwnTracks](http://owntracks.org) apps. It is a compiled program which is easily to install and operate even on low-end hardware, and it doesn't require an external database.
+The _OwnTracks Recorder_ is a lightweight program for storing and accessing location data published via [MQTT](https://mqtt.org/) (or HTTP) by the [OwnTracks](http://owntracks.org) apps. It is a compiled program which is easy to install and operate even on low-end hardware, and it doesn't require an external database.
 
 ![Architecture of the Recorder](assets/ot-recorder.png)
 
@@ -74,13 +74,16 @@ The Recorder serves two purposes:
 
 ## Installing
 
-We provide ready-to-run packages for a limited number of platforms on our [package repository](http://repo.owntracks.org/README.txt), and we provide a Docker image which bundles the Recorder and a Mosquitto broker [directly from the Docker hub](https://hub.docker.com/r/owntracks/recorderd/).
+We provide ready-to-run packages for a limited number of platforms on our [package repository](http://repo.owntracks.org/README.txt), and we provide a Docker image of the Recorder [directly from the Docker hub](https://hub.docker.com/r/owntracks/recorder).
 
 If those don't work for you, you can build from source.
 
 ### Packages
 
-We create packages for releases for a few distributions. Please note that these packages depend on libmosquitto1 from the [Mosquitto project](http://mosquitto.org/downloads).
+We create packages for releases for a few distributions. Please note:
+
+- that these packages might depend on libmosquitto1 from the [Mosquitto project](http://mosquitto.org/downloads). In particular, for Debian Stretch (9) this is not the case.
+- we typically do not build packages for distributions which have been superceded upstream
 
 Binaries (`ocat`, `ot-recorder`) from these packages run setuid to user `owntracks` so that they work for all users of the system. Note that, say, certificate files you provide must therefore also be readable by the user `owntracks`.
 
@@ -96,8 +99,10 @@ sudo yum install ot-recorder
 
 Debian 7 "Wheezy" (including Rasbian):
 
+- we no longer build for this distribution
+
 ```
-curl http://repo.owntracks.org/repo.owntracks.org.gpg.key | sudo apt-key add -
+curl https://raw.githubusercontent.com/owntracks/recorder/master/etc/repo.owntracks.org.gpg.key | sudo apt-key add -
 echo "deb  http://repo.owntracks.org/debian wheezy main" | sudo tee /etc/apt/sources.list.d/owntracks.list > /dev/null
 sudo apt-get update
 sudo apt-get install ot-recorder
@@ -105,11 +110,25 @@ sudo apt-get install ot-recorder
 
 Debian 8 "Jessie":
 
+- we no longer build for this distribution
+
+
 ```
-curl http://repo.owntracks.org/repo.owntracks.org.gpg.key | sudo apt-key add -
+curl https://raw.githubusercontent.com/owntracks/recorder/master/etc/repo.owntracks.org.gpg.key | sudo apt-key add -
 echo "deb  http://repo.owntracks.org/debian jessie main" | sudo tee /etc/apt/sources.list.d/owntracks.list > /dev/null
 sudo apt-get update
 sudo apt-get install libsodium-dev libsodium13
+sudo apt-get install ot-recorder
+```
+
+Debian 9 "Stretch":
+
+using Stretch Mosquitto packages:
+
+```
+curl https://raw.githubusercontent.com/owntracks/recorder/master/etc/repo.owntracks.org.gpg.key | sudo apt-key add -
+echo "deb  http://repo.owntracks.org/debian stretch main" | sudo tee /etc/apt/sources.list.d/owntracks.list > /dev/null
+sudo apt-get update
 sudo apt-get install ot-recorder
 ```
 
@@ -125,7 +144,7 @@ The packages we provide have a systemd unit file in `/usr/share/doc/ot-recorder/
 
 ### Docker
 
-We also have a Docker image to create containers which integrate a [Mosquitto broker](http://mosquitto.org) with the Recorder. The Docker image is [available from the Docker hub](https://hub.docker.com/r/owntracks/recorderd/) (e.g. `docker pull owntracks/recorderd`), and it's [usage is documented in the Booklet](http://owntracks.org/booklet/clients/recorder/).
+We also have a Docker image to create a container with the Recorder. The Docker image is [available from the Docker hub](https://hub.docker.com/r/owntracks/recorder) (e.g. `docker pull owntracks/recorder`), and it's [usage is documented in the Booklet](http://owntracks.org/booklet/clients/recorder/).
 
 ### Building from source
 
@@ -162,7 +181,7 @@ On Ubuntu:
 ```
 sudo apt-add-repository ppa:mosquitto-dev/mosquitto-ppa
 sudo apt-get update
-sudo apt-get install libmosquitto-dev libcurl3 libcurl4-openssl-dev libconfig-dev
+sudo apt-get install libmosquitto-dev libcurl3 libcurl4-openssl-dev libconfig-dev liblmdb-dev
 ```
 
 #### Building
@@ -210,6 +229,8 @@ Unless already provided by the package you installed, we recommend you create a 
 
 You also need to provide API keys for the maps.
 
+Note: all usernames and device names stored by the Recorder [are lowercased](doc/DESIGN.md) which means filenames etc. are also in lowercase. As an example, if your device publishes topics for user `Fred` (which is perfectly valid), the Recorder will turn that into `fred`, likewise for `Phone` which becomes `phone` as device name.
+
 ### `ot-recorder` options
 
 This section lists the most important options of the Recorder with their long names; check the usage (`recorder -h`) for the short versions.
@@ -219,6 +240,8 @@ This section lists the most important options of the Recorder with their long na
 `--host` is the name or address of the MQTT broker and overrides `$OTR_HOST`. The default is "localhost". 
 
 `--port` is the port number of the MQTT broker and overrides `$OTR_PORT`; it defaults to 1883. Setting this to 0 disables MQTT even if it is compiled-in.
+
+`--identity` and `--psk` define the TLS PSK identity and pre--shared key respectively to use in a TLS-PSK connection to Mosquitto. Note that the listener needs to be set up accordingly and that it is an error to configure `--cafile` together with these options.
 
 `--user` overrides `$OTR_USER` and specifies the username to use in the MQTT connection.
 
@@ -236,7 +259,7 @@ This section lists the most important options of the Recorder with their long na
 
 `--quiet` disables printing of messages to stdout.
 
-`--initialize` creates the a structure within the storage directory and initializes the LMDB database. It is safe to use this even if such a database exists -- the database is not wiped. After initialization, Recorder exits.
+`--initialize` creates the structure within the storage directory and initializes the LMDB database. It is safe to use this even if such a database exists -- the database is not wiped. After initialization, Recorder exits.
 
 `--label` specifies a label (default: "Recorder") to be shown in the WebSocket live map.
 
@@ -244,11 +267,20 @@ This section lists the most important options of the Recorder with their long na
 
 `--docroot` overrides the compile-time setting of the HTTP document root.
 
+`--viewsdir` overrides the path to the JSON views, which defaults to `<docroot>/views`.
+
 `--lua-script` specifies the path to the Lua script. If not given, Lua support is disabled.
 
 `--precision` overrides the compiled-in default. (See "Precision" later.)
 
-`--geokey` sets the Google API key for reverse geo lookups.  If you do more than 2500 (currently) reverse-geo requests per day, you'll need an API key for Google's geocoding service. Specify that here.
+`--geokey` sets the API key for reverse geo lookups. We support Google (legacy) and OpenCage which we recommend [OpenCage](doc/OPENCAGE.md). We also support [revgeod]. You will require an API key for the first two. For backwards-compatibility the API key for Google is used "as is", whereas you prefix the OpenCage API key with the string `"opencage:"`:
+```
+--geokey "opencage:xxxxxxxxxxxxxxxxxxxxxx"      # for OpenCage
+--geokey "xxxxxxxxxxxxxxxxxxxxxx"               # for Google
+--geokey "revgeod:localhost:8865"               # for Revgeod (host:port)
+```
+
+(The rules of the game for using Google as reverse geocoder changed in May 2018; make sure to check Google's Map Project documentation before using this)
 
 `--debug` enables a bit of additional debugging on stderr.
 
@@ -280,6 +312,9 @@ The following configuration settings may be applied (a `Y` in column `$` means a
 | `OTR_BROWSERAPIKEY`   |  Y    |               | Google maps browser API key
 | `OTR_TOPICS`          |       |               | String containing a space-separated list of topics to subscribe to for MQTT (overridden by command-line arguments)
 | `OTR_CAFILE`          |  Y    |               | Path to PEM-encoded CA certificate file for MQTT (implicitly enables TLS)
+| `OTR_CAPATH`          |  Y    |               | Directory of c_rehashed PEM certificates
+| `OTR_CERTFILE`        |  Y    |               | Path to PEM-encoded client certificate for MQTT
+| `OTR_KEYFILE`         |  Y    |               | Path to PEM-encoded client key for MQTT
 
 
 Note that options passed to `ot-recorder` override both configuration file settings and environment variables.
@@ -613,7 +648,12 @@ isotst,vel,addr
 
 ## Reverse Geo
 
-If not disabled with option `--norevgeo`, the Recorder will attempt to perform a reverse-geo lookup on the location coordinates it obtains and store them in an LMDB database. If a lookup is not possible, for example because you're over quota, the service isn't available, etc., Recorder keeps tracks of the coordinates which could *not* be resolved in a file named `missing`:
+If not disabled with option `--norevgeo`, the Recorder will attempt to perform a reverse-geo lookup on the location coordinates it obtains. These can be either
+
+1. obtained via a Lua function you define (see [doc/HOOKS.md](doc/HOOKS.md))
+2. obtained via a call to one of the supported reverse geocoders (see `--geokey`)
+
+Results of lookups are stored in an LMDB database. If a lookup is not possible, for example because you're over quota, the service isn't available, etc., Recorder keeps tracks of the coordinates which could *not* be resolved in a file named `missing`:
 
 ```
 $ cat store/ghash/missing
@@ -642,7 +682,7 @@ and a precision of 2 would mean that a very large part of France resolves to a s
 
 ![geohash2](assets/geohash-2.png)
 
-The bottom line: if you run the Recorder with just a few devices and want to know quite exactly where you've been, use a high precision (7 is probably good). If you, on the other hand, run Recorder with many devices and are only interested in where a device was approximately, lower the precision; this also has the effect that fewer reverse-geo lookups will be performed in the Google infrastructure. (Also: respect their quotas!)
+The bottom line: if you run the Recorder with just a few devices and want to know quite exactly where you've been, use a high precision (7 is probably good). If you, on the other hand, run Recorder with many devices and are only interested in where a device was approximately, lower the precision; this also has the effect that fewer reverse-geo lookups will be performed in the geocoding service infrastructure. (Also: respect their quotas!)
 
 ### The geo cache
 
@@ -676,6 +716,8 @@ After sending a pingping, you can query the REST interface to determine the diff
 ```
 OK ot-recorder pingping at http://127.0.0.1:8085: 0 seconds difference
 ```
+
+Note that our Docker image has this monitoring built in with recorder-health.sh. What this basically does is it allows Docker to monitor the Recorder's availability in HEALTHCHECK. So, the `ping/ping` you may be seeing is being used between Docker and the container running the Recorder and has absolutely no impact on mobile data.
 
 ## Views
 
@@ -791,6 +833,8 @@ All JSON elements are copied into the `lastpos` data which is returned to the ca
 
 Note how `pathname` and `port` have been copied into the object. These values can be used by the `page` served in the view.
 
+Recall that while we typically say `htdocs/views/` this path is actually configurable with the `--viewsdir` option.
+
 ### Authentication
 
 If `view.json` contains an element called `auth`, it is assumed to be an array of strings, each of which are a 32-character [Digest authentication](https://en.wikipedia.org/wiki/Digest_access_authentication) SHA1 strings for the realm `owntracks-recorder`, for example:
@@ -878,6 +922,8 @@ In order to use Google Maps, you have to obtain a [Google API "Browser key"](htt
 $ ot-recorder --browser-apikey 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' ...
 ```
 
+Do not configure `browser-apikey` if you want to use [OSM](https://www.openstreetmap.org).
+
 
 ### The LMDB database
 
@@ -932,3 +978,4 @@ It actually is possible to gateway location publishes arriving via HTTP into MQT
 
 If a payload is received with an element called `_geoprec` it contains an override for the Recorder's configured reverse-geo precision. So, for example, if Recorder is running with precision 7, say, and the received payload contains `"_geoprec" : 2` the 2 will be used for this particular publish. This is not used in the OwnTracks apps, but it can be used with payloads you generate otherwise. If `_geoprec` is negative, new reverse geo lookups will not be performed, but cached entries of `abs(_geoprec)` will be used.
 
+  [revgeod]: https://github.com/jpmens/revgeod

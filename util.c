@@ -490,22 +490,10 @@ FILE *pathn(char *mode, char *prefix, UT_string *user, UT_string *device, char *
                 return (NULL);
         }
 
-
-#if 0
-	if (device) {
-		utstring_printf(path, "/%s-%s.%s",
-			UB(user), UB(device), suffix);
-	} else {
-		utstring_printf(path, "/%s.%s",
-			UB(user), suffix);
-	}
-#endif
-
 	if (strcmp(prefix, "rec") == 0) {
 		utstring_printf(path, "/%s.%s", yyyymm(epoch), suffix);
 	} else {
-		utstring_printf(path, "/%s.%s",
-			UB(user), suffix);
+		utstring_printf(path, "/%s-%s.%s", UB(user), UB(device), suffix);
 	}
 
         ut_clean(path);
@@ -547,7 +535,9 @@ int safewrite(char *filename, char *buf)
         }
 	/* Ensure NL-terminated */
 	if (buf[strlen(buf) - 1] != '\n') {
-		write(fd, "\n", 1);
+          if (write(fd, "\n", 1) != 1) {
+            return (-1);
+          }
 	}
 
         close(fd);
@@ -607,7 +597,7 @@ double haversine_dist(double th1, double ph1, double th2, double ph2)
 void chomp(char *s)
 {
 	char *p;
-	
+
 	if (!s || *s == 0)
 		return;
 
@@ -616,4 +606,24 @@ void chomp(char *s)
 	while (isspace(*p)) {
 		*p-- = 0;
 	}
+}
+
+double number(JsonNode *j, char *element)
+{
+	JsonNode *m;
+	double d;
+
+	if ((m = json_find_member(j, element)) != NULL) {
+		if (m->tag == JSON_NUMBER) {
+			return (m->number_);
+		} else if (m->tag == JSON_STRING) {
+			d = atof(m->string_);
+			/* Normalize to number */
+			json_delete(m);
+			json_append_member(j, element, json_mknumber(d));
+			return (d);
+		}
+	}
+
+	return (NAN);
 }

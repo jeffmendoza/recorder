@@ -9,7 +9,6 @@ jpm-test/
 obsolete/
 codesign.sh
 sundry/
-*.lua
 kick*.sh
 /debian/*\.debhelper
 /debian/*\.debhelper.log

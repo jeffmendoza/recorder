@@ -11,7 +11,7 @@ install -D etc/ot-recorder.service $tempdir/usr/share/doc/ot-recorder/ot-recorde
 
 name="ot-recorder"
 # add -0 to indicate "not in Debian" as per Roger's suggestion
-version="$(awk '{print $NF;}' version.h | sed -e 's/"//g' )-0-deb$(cat /etc/debian_version)"
+version="$(awk 'NR==1 {print $NF;}' version.h | sed -e 's/"//g' )-0-deb$(cat /etc/debian_version)"
 arch=$(uname -m)
 
 case $arch in
@@ -21,6 +21,12 @@ esac
 debfile="${name}_${version}_${arch}.deb"
 
 rm -f "${debfile}"
+
+libsodium='libsodium13'
+case $(cat /etc/debian_version) in
+	8.8) ;;
+	9.*) libsodium="libsodium18" ;;
+esac
 
 fpm -s dir \
         -t deb \
@@ -38,7 +44,8 @@ fpm -s dir \
         -d "libmosquitto1" \
         -d "liblua5.2-0" \
         -d "libconfig9" \
-        -d "libsodium13" \
+        -d "${libsodium}" \
+        -d "liblmdb0" \
 	--config-files etc/default/ot-recorder \
         --post-install etc/debian/postinst \
         usr var etc

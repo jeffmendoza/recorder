@@ -33,6 +33,7 @@
 #include "geohash.h"
 #include "udata.h"
 #include "version.h"
+#include <float.h>
 #ifdef WITH_HTTP
 # include "http.h"
 #endif
@@ -47,7 +48,6 @@
 #ifdef WITH_HTTP
 
 #define MAXPARTS 40
-#define VIEWSUBDIR	"views"
 
 /* A transparent 40x40 PNG image with a black border */
 static unsigned char border40x40png[] = {
@@ -105,6 +105,31 @@ static char *field(struct mg_connection *conn, char *fieldname)
 	return (NULL);
 }
 
+static double field_d(struct mg_connection *conn, char *fieldname)
+{
+	char buf[BUFSIZ];
+	int ret;
+
+	if ((ret = mg_get_var(conn, fieldname, buf, sizeof(buf))) < 0) {
+		return (NAN);
+	}
+	return (atof(buf));
+}
+
+
+static long *field_n(struct mg_connection *conn, char *fieldname)
+{
+	char buf[BUFSIZ];
+	int ret;
+	static long l;
+
+	if ((ret = mg_get_var(conn, fieldname, buf, sizeof(buf))) < 0) {
+		return (NULL);
+	}
+	l = atol(buf);
+	return (&l);
+}
+
 /*
  * Open a view.json file, parse the JSON and return the object
  * or NULL.
@@ -113,11 +138,10 @@ static char *field(struct mg_connection *conn, char *fieldname)
 static JsonNode *loadview(struct udata *ud, const char *viewname)
 {
 	static UT_string *fpath = NULL;
-	const char *doc_root = mg_get_option(ud->mgserver, "document_root");
 	JsonNode *view;
 
 	utstring_renew(fpath);
-	utstring_printf(fpath, "%s/%s/%s.json", doc_root, VIEWSUBDIR, viewname);
+	utstring_printf(fpath, "%s/%s.json", ud->viewsdir, viewname);
 	debug(ud, "loadview fpath=%s", UB(fpath));
 
 	view = json_mkobject();
@@ -261,14 +285,17 @@ static int send_reply(struct mg_connection *conn)
  * Push a list of LAST users down the Websocket. We send individual
  * JSON objects (not an array of them) because these are what the
  * WS client gets when we the recorder sees a publish.
+ * Ignore the ping/ping user.
  */
 
 static void send_last(struct mg_connection *conn)
 {
 	struct udata *ud = (struct udata *)conn->server_param;
 	JsonNode *user_array, *o, *one;
-	char *u = NULL, *d = NULL;
-
+	char *u = NULL, *d = NULL, *ghash;
+	double lat, lon;
+	lat       = DBL_MAX;
+	lon       = DBL_MAX;
 	u	  = field(conn, "user");
 	d	  = field(conn, "device");
 
@@ -279,11 +306,31 @@ static void send_last(struct mg_connection *conn)
 
 			o = json_mkobject();
 
+			if ((f = json_find_member(one, "username")) != NULL) {
+				JsonNode *d = json_find_member(one, "device");
+
+				/* check for pingping user (ping/ping) and skip */
+				if (f && d) {
+					if (!strcmp(f->string_, "ping") &&
+						!strcmp(d->string_, "ping")) {
+						json_delete(o);
+						continue;
+					}
+				}
+
+				/* Add CARD details */
+				append_card_to_object(o, f->string_, d->string_);
+			}
+
 			json_append_member(o, "_type", json_mkstring("location"));
-			if ((f = json_find_member(one, "lat")) != NULL)
+			if ((f = json_find_member(one, "lat")) != NULL) {
+				lat = f->number_;
 				json_copy_element_to_object(o, "lat", f);
-			if ((f = json_find_member(one, "lon")) != NULL)
+			}
+			if ((f = json_find_member(one, "lon")) != NULL) {
+				lon = f->number_;
 				json_copy_element_to_object(o, "lon", f);
+			}
 
 			if ((f = json_find_member(one, "tst")) != NULL)
 				json_copy_element_to_object(o, "tst", f);
@@ -294,10 +341,9 @@ static void send_last(struct mg_connection *conn)
 			if ((f = json_find_member(one, "topic")) != NULL)
 				json_copy_element_to_object(o, "topic", f);
 
-			if ((f = json_find_member(one, "username")) != NULL) {
-				JsonNode *d = json_find_member(one, "device");
-				/* Add CARD details */
-				append_card_to_object(o, f->string_, d->string_);
+			if ((ghash = geohash_encode(lat, lon, geohash_prec())) != NULL) {
+				json_append_member(o, "ghash", json_mkstring(ghash));
+				free(ghash);
 			}
 
 			http_ws_push_json(ud->mgserver, o);
@@ -864,7 +910,6 @@ static int view(struct mg_connection *conn, const char *viewname)
 	struct udata *ud = (struct udata *)conn->server_param;
 	int limit;
 	char *p, buf[BUFSIZ];
-	const char *doc_root = mg_get_option(ud->mgserver, "document_root");
 	static UT_string *fpath = NULL, *sbuf = NULL;
 	FILE *fp;
 	JsonNode *view, *j, *locarray, *obj, *loc, *geoline;
@@ -905,7 +950,7 @@ static int view(struct mg_connection *conn, const char *viewname)
 		}
 
 		utstring_renew(fpath);
-		utstring_printf(fpath, "%s/%s/%s", doc_root, VIEWSUBDIR, j->string_);
+		utstring_printf(fpath, "%s/%s", ud->viewsdir, j->string_);
 		debug(ud, "page file=%s", UB(fpath));
 
 		if ((fp = fopen(UB(fpath), "r")) == NULL) {
@@ -1152,7 +1197,7 @@ static int dispatch(struct mg_connection *conn, const char *uri)
 		obj = json_mkobject();
 		locs = json_mkarray();
 
-                if ((json = lister(u, d, s_lo, s_hi, (limit > 0) ? TRUE : FALSE)) != NULL) {
+		if ((json = lister(u, d, s_lo, s_hi, (limit > 0) ? TRUE : FALSE)) != NULL) {
 			JsonNode *arr, *fields = NULL;
 			char *flds = field(conn, "fields");
 			int i_have = 0;
@@ -1164,7 +1209,7 @@ static int dispatch(struct mg_connection *conn, const char *uri)
 
 			CLEANUP;
 
-                        if ((arr = json_find_member(json, "results")) != NULL) {
+			if ((arr = json_find_member(json, "results")) != NULL) {
 				JsonNode *f;
                                 json_foreach(f, arr) {
                                         locations(f->string_, obj, locs, s_lo, s_hi, otype, limit, fields, NULL, NULL);
@@ -1212,7 +1257,7 @@ static int dispatch(struct mg_connection *conn, const char *uri)
 			json_delete(obj);
 			return send_status(conn, 422, "geojson failed");
 		}
-        }
+	}
 
 	if (nparts == 1 && !strcmp(uparts[0], "q")) {
 		JsonNode *geo = NULL;
@@ -1454,6 +1499,87 @@ int ev_handler(struct mg_connection *conn, enum mg_event ev)
 					return (MG_TRUE);
 				}
 			}
+
+			/*
+			 * Let's see if this is a GET request with particular fields, in which
+			 * case we assume it's an osmand/traccar location report.
+			 *
+			 * http://demo.traccar.org:5055/?id=123456&lat={0}&lon={1}&timestamp={2}&hdop={3}&altitude={4}&speed={5}
+			 * https://www.traccar.org/osmand/
+			 */
+
+			if (!strcmp(conn->request_method, "GET") && !strcmp(conn->uri, "/")) {
+				JsonNode *obj = json_mkobject();
+				static UT_string *topic = NULL;
+				char *js, *parts[10], buf[512];
+				double d;
+				long *l;
+				int n;
+
+				if ((n = mg_get_var(conn, "id", buf, sizeof(buf))) > 0) {
+					if ((n = splitter(buf, "/", parts)) != 2) {
+						goto not_traccar;
+					}
+					olog(LOG_DEBUG, "Traccar requested for %s", buf);
+					json_append_member(obj, "user", json_mkstring(parts[0]));
+					json_append_member(obj, "device", json_mkstring(parts[1]));
+					utstring_renew(topic);
+					utstring_printf(topic, "owntracks/%s/%s", parts[0], parts[1]);
+					splitterfree(parts);
+				} else {
+					goto not_traccar;
+				}
+
+
+				if ((d = field_d(conn, "lat")) == NAN) goto not_traccar;
+				json_append_member(obj, "lat", json_mknumber(d));
+
+				if ((d = field_d(conn, "lon")) == NAN) goto not_traccar;
+				json_append_member(obj, "lon", json_mknumber(d));
+
+
+				if ((l = field_n(conn, "timestamp")) == NULL) goto not_traccar;
+				json_append_member(obj, "tst", json_mknumber(*l));
+
+				/* The following are optional */
+				if ((l = field_n(conn, "altitude")) != NULL) {
+					json_append_member(obj, "alt", json_mknumber(*l));
+				}
+
+				/* document says 'hdop'; Traccar/iOS uses 'bearing' */
+				if ((l = field_n(conn, "bearing")) != NULL) {
+					json_append_member(obj, "cog", json_mknumber(*l));
+				}
+
+				if ((l = field_n(conn, "batt")) != NULL) {
+					json_append_member(obj, "batt", json_mknumber(*l));
+				}
+
+				if ((l = field_n(conn, "speed")) != NULL) {
+					/* is in knots; we (OwnTracks) want kph */
+
+					*l *= 1.852;
+					json_append_member(obj, "vel", json_mknumber(*l));
+				}
+
+				json_append_member(obj, "_type", json_mkstring("location"));
+				json_append_member(obj, "_proto", json_mkstring("osmand"));
+
+				if ((js = json_stringify(obj, NULL)) != NULL) {
+					fprintf(stderr, "Traccar: %s\n", js);
+					handle_message(ud, UB(topic), js, strlen(js), 0, TRUE, FALSE);
+					free(js);
+				}
+
+				mg_printf_data(conn, "tak");
+				json_delete(obj);
+
+				return (MG_TRUE);
+
+			   not_traccar:
+				json_delete(obj);
+			}
+
 			/*
 			 * We can't handle this request ourselves. Return
 			 * to Mongoose and have it try document root.
@@ -1467,4 +1593,3 @@ int ev_handler(struct mg_connection *conn, enum mg_event ev)
 }
 
 #endif /* WITH_HTTP */
-

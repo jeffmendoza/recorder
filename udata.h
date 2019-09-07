@@ -23,6 +23,11 @@ struct udata {
 	char *password;			/* MQTT password */
 	char *clientid;			/* MQTT clientid */
 	char *cafile;			/* path to CA PEM for MQTT */
+	char *capath;			/* CA path */
+	char *certfile;			/* certificate (client) */
+	char *keyfile;			/* client key */
+	char *identity;			/* PSK identity (hint) */
+	char *psk;			/* PSK */
 #endif
 	int skipdemo;			/* True if _demo users are to be skipped */
 	int revgeo;			/* True (default) if we should do reverse Geo lookups */
@@ -36,6 +41,7 @@ struct udata {
 	int http_port;			/* port number for above */
 	char *http_logdir;		/* full path to http access log */
 	char *browser_apikey;		/* Google maps browser API key */
+	char *viewsdir;			/* path to views directory */
 #endif
 #ifdef WITH_LUA
 	char *luascript;		/* Path to Lua script */
@@ -46,7 +52,7 @@ struct udata {
 	struct gcache *keydb;		/* encryption keys */
 #endif
 	char *label;			/* Server label */
-	char *geokey;			/* Google reverse-geo API key */
+	char *geokey;			/* reverse-geo API key */
 	int debug;			/* enable for debugging */
 	struct gcache *httpfriends;	/* lmdb named database 'friends' */
 	struct gcache *wpdb;		/* lmdb named database 'wp' (waypoints) */

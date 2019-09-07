@@ -1,4 +1,73 @@
 
+2019-02-20 version 0.8.4
+- FIX: Post-installation script fails (#291)
+- NEW: revgeod is queried with &app=recorder
+- UPD: Add `acc` field to GeoJSON point feature properties (#283)
+
+2019-01-11 version 0.8.3
+- FIX: lat,lon in leaflet views
+- FIX: fix paths to be relative to docroot for map/, views/, and  last/
+- FIX: Link to location in table/ now uses OSM, our default (#278)
+
+2019-01-10 version 0.8.1
+- FIX: ensure geohash is sent down the tube in http
+- FIX: environment variable OTR_GEOKEY overrides defaults config (#277)
+- UPD: Surface GEOCODE_TIMEOUT into config.mk (#272)
+- FIX: Correctly calculate time differences (#271)
+
+2018-11-24 version 0.8.0
+- FIX: local leaflet.js installation (#269)
+- FIX: swapped lat/lon in last/ (#268)
+- NEW: support for revgeod (#263)
+- UPD: remove bundled MDB
+- UPD: increased LMDB mapsize (#253) This increases the maximum size of the LMDB in place
+
+2018-09-01 version 0.7.9
+- NEW: support for OSM on live map, by @avanc (#244)
+- FIX: compilation on gcc 8 no longer warns about truncated strings (#242)
+- FIX: remove deprecated signed_in in Google maps
+- UPD: Use OpenCage geocoder for reverse geocoding (#202)
+- NEW: Support for OpenCage in Lua
+
+2018-04-30 version 0.7.6
+- NEW: contrib/freebsd/  notes and rc (#229)
+- NEW: View using Leaflet (#226)
+- FIX: CAPATH or CAFILE set TLS (#232)
+
+2018-02-13 version 0.7.5
+- FIX: ocat --list now works also on file systems which don't support dtype (xfs)
+
+2018-02-12 version 0.7.4
+- FIX: fpm-make for Debian to pull in correct libsodium package (thanks @juzam!) 
+
+2018-02-12 version 0.7.3
+- FIX: GPX exporter gets xmlns (#215)
+- FIX: wait on start of systemd to allow Mosquitto to start (#185)
+- FIX: s/json_remove_from_parent/_delete/g
+- NEW: Add support for OwnTracks Pico by pretending `../pico` is a base topic (#205)
+- UPD: rollback: cards are now once again stored at user/device/user-device.json (but map/table also uses user/user.json if it exists)
+
+2017-05-19 version 0.7.2
+- FIX: ping/ping monitoring user/device no longer shows up on map nor in table (#195)
+- FIX: OTR_CAFILE, KEYFILE, CERTFILE are now also read from config file (#198)
+- NEW: support Traccar (osmand) GET requests
+
+2017-05-17 version 0.7.1
+- FIX: systemd launch and default topics in default files (#185)
+
+2017-05-17 version 0.7.0
+- NEW: name of Lua revgeo function can be set in JSON payload
+- NEW: support TLS PSK (#74)
+- NEW: support for a Lua function to perform reverse Geo (#149)
+- FIX: support for FREEBSD in Makefile/config.mk.in (#163)
+- NEW: support for global store of geo fences (#178)
+- NEW: support for CA_PATH and TLS client certificates
+- FIX: setting http_port = 0 took CPU to unheard heights (#176)
+- NEW: Add support for OSM using Leaflet, by Sven Klomp (#173)
+- NEW: support for waypoints / geo-fences (WARNING: you must --initialize)
+- FIX: built-in Web server serves apikey.js with application/javascript mime type (#168)
+- FIX: Usage now shows missing OTR_BROWSERAPIKEY (#167)
+
 2016-11-25 version 0.6.9
 - UPD: REC files now use tst from JSON payload as timestamp (#133)
 - FIX: default file is /etc/default/ot-recorder

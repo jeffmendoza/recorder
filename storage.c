@@ -28,6 +28,7 @@
 #include <unistd.h>
 #include <glob.h>
 #include <ctype.h>
+#include <assert.h>
 #include <sys/stat.h>
 #include "utstring.h"
 #include "storage.h"
@@ -40,6 +41,7 @@
 char STORAGEDIR[BUFSIZ] = STORAGEDEFAULT;
 
 #define LINESIZE	8192
+#define LARGEBUF        (BUFSIZ * 2)
 
 static struct gcache *gc = NULL;
 
@@ -48,9 +50,9 @@ void storage_init(int revgeo)
 	setenv("TZ", "UTC", 1);
 
 	if (revgeo) {
-		char path[BUFSIZ];
+		char path[LARGEBUF];
 
-		snprintf(path, BUFSIZ, "%s/ghash", STORAGEDIR);
+		snprintf(path, LARGEBUF, "%s/ghash", STORAGEDIR);
 		gc = gcache_open(path, NULL, TRUE);
 		if (gc == NULL) {
 			olog(LOG_ERR, "storage_init(): gc is NULL");
@@ -60,17 +62,17 @@ void storage_init(int revgeo)
 
 void storage_gcache_dump(char *lmdbname)
 {
-	char path[BUFSIZ];
-	snprintf(path, BUFSIZ, "%s/ghash", STORAGEDIR);
+	char path[LARGEBUF];
+	snprintf(path, LARGEBUF, "%s/ghash", STORAGEDIR);
 
 	gcache_dump(path, lmdbname);
 }
 
 void storage_gcache_load(char *lmdbname)
 {
-	char path[BUFSIZ];
+	char path[LARGEBUF];
 
-	snprintf(path, BUFSIZ, "%s/ghash", STORAGEDIR);
+	snprintf(path, LARGEBUF, "%s/ghash", STORAGEDIR);
 	gcache_load(path, lmdbname);
 }
 
@@ -177,19 +179,19 @@ static void get_gw_data(char *username, char *device, JsonNode *last)
 
 void append_card_to_object(JsonNode *obj, char *user, char *device)
 {
-	char path[BUFSIZ], path1[BUFSIZ], *cardfile = NULL;
+	char path[LARGEBUF], path1[LARGEBUF], *cardfile = NULL;
 	JsonNode *card;
 
 	if (!user || !*user)
 		return;
 
 
-	snprintf(path, BUFSIZ, "%s/cards/%s/%s/%s-%s.json",
+	snprintf(path, LARGEBUF, "%s/cards/%s/%s/%s-%s.json",
 		STORAGEDIR, user, device, user, device);
 	if (access(path, R_OK) == 0) {
 		cardfile = path;
 	} else {
-		snprintf(path1, BUFSIZ, "%s/cards/%s/%s.json",
+		snprintf(path1, LARGEBUF, "%s/cards/%s/%s.json",
 			STORAGEDIR, user, user);
 
 		if (access(path1, R_OK) == 0) {
@@ -206,10 +208,10 @@ void append_card_to_object(JsonNode *obj, char *user, char *device)
 
 void append_device_details(JsonNode *userlist, char *user, char *device)
 {
-	char path[BUFSIZ];
+	char path[LARGEBUF];
 	JsonNode *node, *last;
 
-	snprintf(path, BUFSIZ, "%s/last/%s/%s/%s-%s.json",
+	snprintf(path, LARGEBUF, "%s/last/%s/%s/%s-%s.json",
 		STORAGEDIR, user, device, user, device);
 
 	last = json_mkobject();
@@ -232,7 +234,7 @@ void append_device_details(JsonNode *userlist, char *user, char *device)
 	}
 
 	/* Extra data */
-	snprintf(path, BUFSIZ, "%s/last/%s/%s/extra.json",
+	snprintf(path, LARGEBUF, "%s/last/%s/%s/extra.json",
 		STORAGEDIR, user, device);
 	json_copy_from_file(last, path);
 #if WITH_GREENWICH
@@ -252,9 +254,9 @@ JsonNode *last_users(char *in_user, char *in_device, JsonNode *fields)
 {
 	JsonNode *obj = json_mkobject();
 	JsonNode *un, *dn, *userlist = json_mkarray();
-	char path[BUFSIZ], user[BUFSIZ], device[BUFSIZ];
+	char path[LARGEBUF], user[BUFSIZ], device[BUFSIZ];
 
-	snprintf(path, BUFSIZ, "%s/last", STORAGEDIR);
+	snprintf(path, LARGEBUF, "%s/last", STORAGEDIR);
 
 	// fprintf(stderr, "last_users(%s, %s)\n", (in_user) ? in_user : "<nil>",
 	// 	(in_device) ? in_device : "<nil>");
@@ -422,7 +424,25 @@ static void ls(char *path, JsonNode *obj)
 	}
 
 	while ((dp = readdir(dirp)) != NULL) {
-		if ((*dp->d_name != '.') && (dp->d_type == DT_DIR)) {
+		bool is_dir = false;
+
+		/* XFS doesn't support d_type, and it's used on CentOS 7.
+		 * Ensure we can determine whether something's a directory.
+		 */
+
+		if (dp->d_type == DT_DIR) {
+			is_dir = true;
+		} else {
+			struct stat st;
+			static UT_string *fullp = NULL;
+
+			utstring_renew(fullp);
+			utstring_printf(fullp, "%s/%s", path, dp->d_name);
+
+			assert(stat(UB(fullp), &st) != -1);
+			is_dir = S_ISDIR(st.st_mode);
+		}
+		if (is_dir && (*dp->d_name != '.')) {
 			json_append_element(jarr, json_mkstring(dp->d_name));
 		}
 	}
@@ -513,7 +533,6 @@ static void lsscan(char *pathpat, time_t s_lo, time_t s_hi, JsonNode *obj, int r
 	if ((jarr = json_find_member(obj, "results")) == NULL) {
 		jarr = json_mkarray();
 	} else {
-		json_remove_from_parent(jarr);
 		json_delete(jarr);
 	}
 
@@ -730,7 +749,7 @@ static int candidate_line(char *line, void *param)
 		time_t secs;
 
 		if ((p = strptime(line, "%Y-%m-%dT%H:%M:%SZ", &tmline)) == NULL) {
-			fprintf(stderr, "no strptime on %s", line);
+			fprintf(stderr, "invalid strptime format on %s", line);
 			return (0);
 		}
 		tmline.tm_isdst = -1; 		/* A negative value for tm_isdst causes
@@ -765,7 +784,7 @@ static int candidate_line(char *line, void *param)
 		time_t secs;
 
 		if ((p = strptime(line, "%Y-%m-%dT%H:%M:%SZ", &tmline)) == NULL) {
-			fprintf(stderr, "no strptime on %s", line);
+			fprintf(stderr, "invalid strptime format on %s", line);
 			return (0);
 		}
 		tmline.tm_isdst = -1;
@@ -900,7 +919,7 @@ void locations(char *filename, JsonNode *obj, JsonNode *arr, time_t s_lo, time_t
  *
  */
 
-static void append_to_feature_array(JsonNode *features, double lat, double lon, char *tid, char *addr, long tst)
+static void append_to_feature_array(JsonNode *features, double lat, double lon, char *tid, char *addr, long tst, long vel, long acc)
 {
 	JsonNode *geom, *props, *f = json_mkobject();
 
@@ -916,7 +935,9 @@ static void append_to_feature_array(JsonNode *features, double lat, double lon, 
 	props = json_mkobject();
                   json_append_member(props, "name", json_mkstring(tid));
                   json_append_member(props, "address", json_mkstring(addr));
+                  json_append_member(props, "vel", json_mknumber(vel));
                   json_append_member(props, "tst", json_mknumber(tst));
+                  json_append_member(props, "acc", json_mknumber(acc));
 
         json_append_member(f, "geometry", geom);
         json_append_member(f, "properties", props);
@@ -939,12 +960,11 @@ JsonNode *geo_json(JsonNode *location_array)
 	json_foreach(one, location_array) {
 		double lat = 0.0, lon = 0.0;
 		char *addr = "", *tid = "";
-		long tst = 0;
+		long tst = 0, vel = 0, acc = 0;
 
                 if ((j = json_find_member(one, "lat")) != NULL) {
                         lat = j->number_;
                 }
-
                 if ((j = json_find_member(one, "lon")) != NULL) {
                         lon = j->number_;
                 }
@@ -957,8 +977,14 @@ JsonNode *geo_json(JsonNode *location_array)
                 if ((j = json_find_member(one, "tst")) != NULL) {
                         tst = j->number_;
                 }
+                if ((j = json_find_member(one, "vel")) != NULL) {
+                        vel = j->number_;
+                }
+                if ((j = json_find_member(one, "acc")) != NULL) {
+                        acc = j->number_;
+                }
 
-		append_to_feature_array(feature_array, lat, lon, tid, addr, tst);
+		append_to_feature_array(feature_array, lat, lon, tid, addr, tst, vel, acc);
 	}
 
 	json_append_member(fcollection, "features", feature_array);
@@ -1040,7 +1066,7 @@ char *gpx_string(JsonNode *location_array)
 	utstring_renew(xml);
 
 	utstring_printf(xml, "%s", "<?xml version='1.0' encoding='UTF-8' standalone='no' ?>\n\
-<gpx version='1.1' creator='OwnTracks-Recorder'>\n\
+<gpx version='1.1' creator='OwnTracks-Recorder' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance' xmlns='http://www.topografix.com/GPX/1/1'>\n\
  <trk>\n\
   <trkseg>\n");
 
@@ -1459,7 +1485,7 @@ void csv_output(JsonNode *array, output_type otype, JsonNode *fields, void (*fun
 
 char *storage_userphoto(char *username)
 {
-	static char path[BUFSIZ];
+	static char path[LARGEBUF];
 
 	if (!username || !*username)
 		return (NULL);
@@ -1476,7 +1502,7 @@ char *storage_userphoto(char *username)
 
 void extra_http_json(JsonNode *array, char *user, char *device)
 {
-	char path[BUFSIZ], *js_string;
+	char path[LARGEBUF], *js_string;
 	JsonNode *node;
 
 	if (!array || !user || !*user || !device || !*device)
@@ -1485,7 +1511,7 @@ void extra_http_json(JsonNode *array, char *user, char *device)
 		return;
 
 	/* Extra data */
-	snprintf(path, BUFSIZ, "%s/last/%s/%s/http.json",
+	snprintf(path, LARGEBUF, "%s/last/%s/%s/http.json",
 		STORAGEDIR, user, device);
 
 	if ((js_string = slurp_file(path, TRUE)) == NULL) {
@@ -1528,8 +1554,6 @@ static bool load_otrw_waypoints(struct udata *ud, JsonNode *wplist, char *user, 
 {
 	JsonNode *n;
 	static UT_string *key;
-	long len;
-	char buf[20];
 
 	json_foreach(n, wplist) {
 		JsonNode *rad, *lat, *lon, *desc, *tst, *type;
@@ -1540,7 +1564,7 @@ static bool load_otrw_waypoints(struct udata *ud, JsonNode *wplist, char *user, 
 		if (strcmp(type->string_, "waypoint") != 0)
 			return (false);
 
-		json_remove_from_parent(type);
+		json_delete(type);
 
 		if ((rad = json_find_member(n, "rad")) == NULL)
 			continue;
@@ -1555,7 +1579,7 @@ static bool load_otrw_waypoints(struct udata *ud, JsonNode *wplist, char *user, 
 		/* It turns out tst was a key, but it breaks on iOS when dumped
 		 * waypoints are re-imported. we'll use the geohash of lat/lon here */
 
-		json_remove_from_parent(tst);
+		json_delete(tst);
 
 		utstring_renew(key);
 		utstring_printf(key, "%s-%s-%s", user, device,
@@ -1569,10 +1593,12 @@ static bool load_otrw_waypoints(struct udata *ud, JsonNode *wplist, char *user, 
 		 */
 
 		/* Note: we don't need buf -- just checking if key exists */
-		len = gcache_get(ud->wpdb, UB(key), buf, sizeof(buf));
-		if (len == -1) {
-			gcache_json_put(ud->wpdb, UB(key), n);
-		}
+		// len = gcache_get(ud->wpdb, UB(key), buf, sizeof(buf));
+		// if (len == -1) {
+		// }
+
+		/* Clobber existing record b/c desc might have changed (#171) */
+		gcache_json_put(ud->wpdb, UB(key), n);
 	}
 
 	return (true);
@@ -1648,7 +1674,6 @@ bool load_fences(struct udata *ud)
 		for (n = 0; n < results.gl_pathc; n++) {
 			char *f = results.gl_pathv[n];
 
-			// puts(f);
 			load_otrw_file(ud, f);
 		}
 	}

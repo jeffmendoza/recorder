@@ -59,6 +59,10 @@
 	for (i in data) {
 		var d = data[i];
 
+		if (d.username == 'ping' && d.device == 'ping') {
+			continue;
+		}
+
 		if (!d.topic) {
 			console.log("SKIP " + JSON.stringify(d));
 			continue;
@@ -280,7 +284,7 @@
                             visible: true,
                             data: null,
                             render : function(data, type, row) {
-			    	var t = "<a target='_new' href='http://maps.google.com/?q={{lat}},{{lon}}'>{{addr}}</a>";
+				var t = "<a target='_new' href='http://www.openstreetmap.org/?mlat={{lat}}&mlon={{lon}}'>{{addr}}</a>";
 				return Mustache.render(t, data);
 			    },
                             "targets" : [10],
