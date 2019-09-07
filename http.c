@@ -452,58 +452,15 @@ static int send_status(struct mg_connection *conn, int status, char *text)
 
 JsonNode *populate_friends(struct mg_connection *conn, char *u, char *d)
 {
-	struct udata *ud = (struct udata *)conn->server_param;
 	JsonNode *results = json_mkarray(), *lastuserlist;
-	JsonNode *friends, *obj, *jud, *newob, *jtid;
-	int np;
-	char *pairs[3];
-	static UT_string *userdevice = NULL;
+	JsonNode *obj, *newob, *jtid;
 
 
-	utstring_renew(userdevice);
-	utstring_printf(userdevice, "%s-%s", u, d);
-
-	friends = gcache_json_get(ud->httpfriends, UB(userdevice));
-
-	if (ud->debug) {
-		char *js = NULL;
-
-		if (friends)
-			js = json_stringify(friends, NULL);
-		debug(ud, "Friends of %s: %s", UB(userdevice), js ? js : "<nil>");
-		if (js)
-			free(js);
+	if ((lastuserlist = last_users(NULL, NULL, NULL)) == NULL) {
+	  return (results);
 	}
 
-	if (friends == NULL) {
-		return (results);
-	}
-	if (friends->tag != JSON_ARRAY) {
-		olog(LOG_ERR, "expecting value of friends:%s to be an array", UB(userdevice));
-		return (results);
-	}
-
-	/*
-	 * Run through the array of friends of this user. Get LAST object,
-	 * which contains CARD and LOCATION data. Create an array of
-	 * separate location and card objects to return in HTTP mode.
-	 */
-
-	json_foreach(jud, friends) {
-		if ((np = splitter(jud->string_, "/:-", pairs)) != 2) {
-			continue;
-		}
-		if ((lastuserlist = last_users(pairs[0], pairs[1], NULL)) == NULL) {
-			splitterfree(pairs);
-			continue;
-		}
-		splitterfree(pairs);
-
-		if ((obj = json_find_element(lastuserlist, 0)) == NULL) {
-			json_delete(lastuserlist);
-			continue;
-		}
-
+	json_foreach(obj, lastuserlist) {
 		/* TID is mandatory; if we don't have that, skip */
 		if ((jtid = json_find_member(obj, "tid")) == NULL) {
 			json_delete(lastuserlist);
@@ -533,11 +490,9 @@ JsonNode *populate_friends(struct mg_connection *conn, char *u, char *d)
 		json_copy_element_to_object(newob, "acc", json_find_member(obj, "acc"));
 		json_copy_element_to_object(newob, "vac", json_find_member(obj, "vac"));
 		json_append_element(results, newob);
-
-		json_delete(lastuserlist);
 	}
 
-	json_delete(friends);
+	json_delete(lastuserlist);
 
 	return (results);
 }
