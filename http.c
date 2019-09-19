@@ -86,7 +86,7 @@ static char *field(struct mg_connection *conn, char *fieldname)
      strcmp(fieldname, "device") == 0 ||
      strcmp(fieldname, "u") == 0 ||
      strcmp(fieldname, "d") == 0) {
-    snprintf(buf, sizeof(buf), "X-Sandstorm-Username");
+    snprintf(buf, sizeof(buf), "X-Sandstorm-Preferred-Handle");
   } else {
     snprintf(buf, sizeof(buf), "X-Limit-%s", fieldname);
   }
@@ -463,7 +463,6 @@ JsonNode *populate_friends(struct mg_connection *conn, char *u, char *d)
 	json_foreach(obj, lastuserlist) {
 		/* TID is mandatory; if we don't have that, skip */
 		if ((jtid = json_find_member(obj, "tid")) == NULL) {
-			json_delete(lastuserlist);
 			continue;
 		}
 
@@ -1083,7 +1082,7 @@ static int dispatch(struct mg_connection *conn, const char *uri)
 			free(flds);
 		}
 
-		if ((user_array = last_users(u, d, fields)) != NULL) {
+		if ((user_array = last_users(NULL, NULL, fields)) != NULL) {
 			CLEANUP;
 			json_delete(fields);
 
