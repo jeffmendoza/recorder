@@ -141,6 +141,7 @@ const pkgdef :Spk.PackageDefinition = (
     # here are only to tell it where to find files that the app wants.
     searchPath = [
       ( sourcePath = "." ),  # Search this directory first.
+      ( sourcePath = ".." ),  # Search this directory first.
       ( sourcePath = "/",    # Then search the system root directory.
         hidePaths = [ "home", "proc", "sys",
                       "etc/passwd", "etc/hosts", "etc/host.conf",
@@ -156,7 +157,7 @@ const pkgdef :Spk.PackageDefinition = (
   # `spk dev` will write a list of all the files your app uses to this file.
   # You should review it later, before shipping your app.
 
-  alwaysInclude = ["opt/app/docroot"],
+  alwaysInclude = ["usr/local/owntracks/docroot"],
   # Fill this list with more names of files or directories that should be
   # included in your package, even if not listed in sandstorm-files.list.
   # Use this to force-include stuff that you know you need but which may
@@ -235,7 +236,7 @@ const pkgdef :Spk.PackageDefinition = (
 
 const myCommand :Spk.Manifest.Command = (
   # Here we define the command used to start up your server.
-  argv = ["/sandstorm-http-bridge", "8000", "--", "/opt/app/.sandstorm/launcher.sh"],
+  argv = ["/sandstorm-http-bridge", "8000", "--", "/usr/local/owntracks/launcher.sh"],
   environ = [
     # Note that this defines the *entire* environment seen by your app.
     (key = "PATH", value = "/usr/local/bin:/usr/bin:/bin"),

@@ -28,14 +28,13 @@ set -euo pipefail
 
 # By default, this script does nothing.  You'll have to modify it as
 # appropriate for your application.
-cd /opt/app
 
 mkdir -p /var/store/last
 mkdir -p /var/store/rec
 
 # safe to run every time
-./ot-recorder --initialize
+/usr/local/owntracks/ot-recorder --initialize
 
-./ot-recorder --http-port=$PORT --norevgeo
+/usr/local/owntracks/ot-recorder --http-port=$PORT --norevgeo
 
 exit 0
