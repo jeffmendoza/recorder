@@ -82,14 +82,7 @@ static char *field(struct mg_connection *conn, char *fieldname)
 	char buf[BUFSIZ], *p, *h;
 	int ret;
 
-  if(strcmp(fieldname, "user") == 0 ||
-     strcmp(fieldname, "device") == 0 ||
-     strcmp(fieldname, "u") == 0 ||
-     strcmp(fieldname, "d") == 0) {
-    snprintf(buf, sizeof(buf), "X-Sandstorm-Preferred-Handle");
-  } else {
-    snprintf(buf, sizeof(buf), "X-Limit-%s", fieldname);
-  }
+	snprintf(buf, sizeof(buf), "X-Limit-%s", fieldname);
 
 	if ((h = (char *)mg_get_header(conn, buf)) != NULL) {
 		p = strdup(h);
@@ -101,6 +94,16 @@ static char *field(struct mg_connection *conn, char *fieldname)
 		p = strdup(buf);
 		lowercase(p);
 		return (p);
+	}
+	if(strcmp(fieldname, "user") == 0 ||
+	   strcmp(fieldname, "device") == 0 ||
+	   strcmp(fieldname, "u") == 0 ||
+	   strcmp(fieldname, "d") == 0) {
+	  if ((h = (char *)mg_get_header(conn, "X-Sandstorm-Preferred-Handle")) != NULL) {
+	    p = strdup(h);
+	    lowercase(p);
+	    return (p);
+	  }
 	}
 	return (NULL);
 }
@@ -299,7 +302,7 @@ static void send_last(struct mg_connection *conn)
 	u	  = field(conn, "user");
 	d	  = field(conn, "device");
 
-	if ((user_array = last_users(u, d, NULL)) != NULL) {
+	if ((user_array = last_users(NULL, NULL, NULL)) != NULL) {
 
 		json_foreach(one, user_array) {
 			JsonNode *f;

@@ -9,7 +9,7 @@ const pkgdef :Spk.PackageDefinition = (
   # The package definition. Note that the spk tool looks specifically for the
   # "pkgdef" constant.
 
-  id = "cjv3p2a970vrm729x9x0v54k0nff6x6s2xcgwvgpuzhgk56wum5h",
+  id = "gq6g51z9uemsatp6ka4z9h9k6m2gq40pk22yu50pkz9jws7703xh",
   # Your app ID is actually its public key. The private key was placed in
   # your keyring. All updates must be signed with the same key.
 
@@ -17,11 +17,11 @@ const pkgdef :Spk.PackageDefinition = (
     # This manifest is included in your app package to tell Sandstorm
     # about your app.
 
-    appTitle = (defaultText = "OwnTracks"),
+    appTitle = (defaultText = "OwnTracks-New"),
 
-    appVersion = 5,  # Increment this for every release.
+    appVersion = 6,  # Increment this for every release.
 
-    appMarketingVersion = (defaultText = "0.0.5"),
+    appMarketingVersion = (defaultText = "0.0.6"),
     # Human-readable representation of appVersion. Should match the way you
     # identify versions of your app in documentation and marketing.
 
@@ -73,12 +73,12 @@ const pkgdef :Spk.PackageDefinition = (
       author = (
         # Fields relating to the author of this app.
 
-        contactEmail = "michael@nutt.im",
+        contactEmail = "jlm@jlm.name",
         # Email address to contact for any issues with this app. This includes end-user support
         # requests as well as app store administrator requests, so it is very important that this be a
         # valid address with someone paying attention to it.
 
-        pgpSignature = embed "pgp-signature",
+        #pgpSignature = embed "pgp-signature",
         # PGP signature attesting responsibility for the app ID. This is a binary-format detached
         # signature of the following ASCII message (not including the quotes, no newlines, and
         # replacing <app-id> with the standard base-32 text format of the app's ID):
@@ -99,7 +99,7 @@ const pkgdef :Spk.PackageDefinition = (
         # Remove this line if you consider yourself as the author of the app.
       ),
 
-      pgpKeyring = embed "pgp-keyring",
+      #pgpKeyring = embed "pgp-keyring",
       # A keyring in GPG keyring format containing all public keys needed to verify PGP signatures in
       # this manifest (as of this writing, there is only one: `author.pgpSignature`).
       #
@@ -141,7 +141,6 @@ const pkgdef :Spk.PackageDefinition = (
     # here are only to tell it where to find files that the app wants.
     searchPath = [
       ( sourcePath = "." ),  # Search this directory first.
-      ( sourcePath = ".." ),  # Search this directory first.
       ( sourcePath = "/",    # Then search the system root directory.
         hidePaths = [ "home", "proc", "sys",
                       "etc/passwd", "etc/hosts", "etc/host.conf",
@@ -236,10 +235,10 @@ const pkgdef :Spk.PackageDefinition = (
 
 const myCommand :Spk.Manifest.Command = (
   # Here we define the command used to start up your server.
-  argv = ["/sandstorm-http-bridge", "8000", "--", "/usr/local/owntracks/launcher.sh"],
+  argv = ["/sandstorm-http-bridge", "8000", "--", "./launcher.sh"],
   environ = [
     # Note that this defines the *entire* environment seen by your app.
-    (key = "PATH", value = "/usr/local/bin:/usr/bin:/bin"),
+    (key = "PATH", value = "/usr/local/bin:/usr/bin"),
     (key = "SANDSTORM", value = "1"),
     # Export SANDSTORM=1 into the environment, so that apps running within Sandstorm
     # can detect if $SANDSTORM="1" at runtime, switching UI and/or backend to use

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/bash
 set -euo pipefail
 # This script is run every time an instance of our app - aka grain - starts up.
 # This is the entry point for your application both when a grain is first launched
@@ -29,8 +29,8 @@ set -euo pipefail
 # By default, this script does nothing.  You'll have to modify it as
 # appropriate for your application.
 
-mkdir -p /var/store/last
-mkdir -p /var/store/rec
+/usr/bin/mkdir -p /var/store/last
+/usr/bin/mkdir -p /var/store/rec
 
 # safe to run every time
 /usr/local/owntracks/ot-recorder --initialize
